@@ -9,6 +9,33 @@
 
 ---
 
+## [0.3.0] — 2026-10-22
+
+干净出口从 vmess 池（整池被判 `cc=CN`）切到 Hysteria2 池（`cc=SG`），Gemini 恢复。
+
+### 新增
+
+- 新增 `guardian/guardian.sh` —— `is_bad_node` 对 `*-HY2*` 开例外：Hysteria2 池是当前唯一 `cc=SG` 的干净出口，不再当成「Google 判 CN」的坏节点
+
+### 修复
+
+- 修复 `guardian/guardian.sh` —— `CLEAN_NODE` 默认值从 `🇮🇳 印度-优化` 改为 `🇸🇬 新加坡SG-HY2`
+- 修复 `guardian/guardian.sh` —— `CL_CANDIDATES` / `CL_ALIVE_CANDIDATES` 改为 HY2 四个优先，台湾-优化3 与印度兜底
+- 修复 `guardian/guardian.sh` —— §6 的 cc 探针从「必须等于 IN」改为「只有 CN / HK 才 ALERT」，`cc=SG` 不再误报
+
+### 排查结论（2026-10-22）
+
+- vmess 池 5 个候选（印度×3、新加坡-优化3、台湾-优化3）全部 `var cc='CN'` / `pref=hkredirect`；手机同款「新加坡-优化3」在路由器上同样被判 CN
+- HY2 池 4 个节点（`*.mjhy2.com`）全部 `cc='SG'`，新加坡延迟 44ms（vmess 同地区 114ms、印度 224ms）
+- 验证：`gemini.google.com/app` 200 / 0.34s；`hotupdate` 后 `hy2=4` 且选择仍是 SG-HY2
+
+### 部署验证（2026-10-22）
+
+- 备份：`/etc/ShellCrash/guardian.sh.bak-hy2-20261022`、`/root/backup/guardian.sh.pre-hy2-20261022`
+- 设备版与仓库版字节一致，`sh -n` 通过
+
+---
+
 ## [0.2.0] — 2026-10-22
 
 与设备上实际运行的版本对齐。设备侧在 2026-10-21 公开化之后继续演进，
