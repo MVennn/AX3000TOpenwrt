@@ -7,7 +7,7 @@
 | 目录 | 职责 |
 |---|---|
 | `system/` | 路由器系统面：开机脚本 `rc.local`、已执行的一次性补丁与核心升级脚本（`archive/`） |
-| `guardian/` | 网络守护进程：检测 + 最小化修复，每 5 分钟一轮 |
+| `guardian/` | 网络守护进程：检测 + 最小化修复，每 5 分钟一轮；含 OOM 拉起前的内存闸门 `memgate.sh` |
 | `recovery/` | 故障恢复：`recover-now.sh` 主力、Windows 侧触发器（`local-tools/`）、已被取代的旧版（`archive/`） |
 | `docs/` | 文档：索引、规则正本、硬件基线、状态速查、排障手册、Release 说明 |
 | `baseline/` | `sysupgrade` 保留清单与无线配置模板（示例值） |
@@ -22,7 +22,7 @@
 
 | 事项 | 载体 | 具体做什么 |
 |---|---|---|
-| **网络守护** | [`guardian/guardian.sh`](../guardian/guardian.sh) | 代理进程存活、nft 表补载、策略组出口复原、ShellCrash「静默回退」自愈、`/tmp` 内存盘水位；每 5 分钟一轮，只做「检测 + 最小化修复」 |
+| **网络守护** | [`guardian/guardian.sh`](../guardian/guardian.sh) | 代理进程存活、nft 表补载、策略组出口复原、ShellCrash「静默回退」自愈、`/tmp` 内存盘水位、OOM 拉起前内存闸门；每 5 分钟一轮，只做「检测 + 最小化修复」 |
 | **开机自启与运行时目录兜底** | [`system/rc.local`](../system/rc.local) | tmpfs 上的 `/tmp/ShellCrash` 重建、`/var` 软链目标目录重建、四张自建 nft 表开机加载、开机后自动验收派发 |
 | **故障恢复** | [`recovery/recover-now.sh`](../recovery/recover-now.sh) | 「WiFi 连上了但没网」「DNS 解析全失败」「代理离线」的成套恢复；`check` 参数只诊断、不改任何东西 |
 | **一次性补丁与核心升级** | [`system/archive/`](../system/archive/) · [`recovery/archive/`](../recovery/archive/) | 已执行完毕、留档可复用，各自带回滚（见下表的「回退方式」列） |
@@ -34,6 +34,8 @@
 |---|---|---|---|
 | `system/rc.local` | `/etc/rc.local` | 开机（procd 执行） | 改前 cp 一份到 `/root/backup/<对象>-<动作>-<YYYYMMDD>/rc.local`；或用 `system/archive/bootfix.sh` 留下的 `/root/backup/pre-bootfix-<时间戳>/rc.local` 还原 |
 | `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 从 `/root/backup/` 下同名备份还原；**停用**：见[「启用与停用守护」](#启用与停用守护) |
+| `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 从 `/root/backup/` 下同名备份还原；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
+| `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
 | `recovery/recover-now.sh` | `/tmp/recover-now.sh`（临时，用完即弃） | 人工，或 `recovery/local-tools/recover-run.cmd` | 脚本自带回滚：改前把 `fake_ip_filter` 备份到 `/root/fake_ip_filter.bak.<时间戳>`，crontab 备份到 `/tmp/cron.recover.bak` |
 | `recovery/local-tools/recover-run.cmd` | 不上设备 | 人双击 | 无需回退 |
 | `recovery/local-tools/recover-run.ps1` | 不上设备 | `recover-run.cmd` | 无需回退 |
@@ -78,7 +80,7 @@ echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/cr
 
 ## 通用版在哪
 
-部署映射表前三行（`system/rc.local`、`guardian/guardian.sh`、`recovery/recover-now.sh`）的
+部署映射表里的 `system/rc.local`、`guardian/guardian.sh`、`recovery/recover-now.sh` 三份
 **通用版**在公开仓 `OpenwrtOpsToolkit/openwrt/`（同名文件 + 一份 `conf/device.conf.example`）。
 本仓这三份是**参考实现** —— 同一套逻辑，但设备相关的值是示例值或占位符。
 差异点清单见 [UPSTREAM.md](UPSTREAM.md) §7。

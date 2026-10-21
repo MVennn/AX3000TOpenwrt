@@ -9,6 +9,27 @@
 
 ---
 
+## [0.2.0] — 2026-10-22
+
+与设备上实际运行的版本对齐。设备侧在 2026-10-21 公开化之后继续演进，
+仓库仍停留在当时的快照；本次把设备侧的新逻辑收回仓库，并补上只存在于设备的依赖文件。
+
+### 新增
+
+- 新增 `guardian/guardian.sh` §2.3 `CLEAN_EXIT_ALIVE` —— 干净出口当前入口的 GitHub 拨号失败时，按「印度优先」自动切到第一个存活入口并同步 `🤖 AI网页`；候选全挂时只告警、不乱切
+
+### 修复
+
+- 修复 `guardian/guardian.sh` —— 与设备版对齐：补上 `memgate` 内存闸门（OOM 拉起前先看 `MemAvailable`）、`is_bad_node` 的台湾-优化3 / 台湾-优化2-GPT 例外、`CL_CANDIDATES` 改为台湾优先；同时保留公开版的参数化与占位符
+- 新增 `guardian/memgate.sh` —— OOM 闸门源文件（此前只在设备上，仓库缺失）
+- 新增 `guardian/memgate.conf` —— 闸门阈值（`MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5`）
+
+### 文档
+
+- 调整 `docs/DEPLOY.md` —— 补 `memgate.sh` / `memgate.conf` 的部署映射与回退方式
+
+---
+
 ## [0.1.0] — 2026-10-21
 
 首次公开版。仓库从私有运维仓整理为可独立阅读、可复用的参考实现。

@@ -54,22 +54,22 @@ Release 说明文件名、发版 tag，三处**必须一致**。
 - 版本号**不从任何构建产物里读**，也没有第二个「真正的版本号」藏在别处 ——
   改版本号 = 改 [CHANGELOG.md](../CHANGELOG.md) 的段标题；
 - 由它派生出两处**必须与标题一致**的引用：
-  - Release 说明文件名 [docs/release-notes/v0.1.0.md](release-notes/v0.1.0.md)
+  - Release 说明文件名 [docs/release-notes/v0.2.0.md](release-notes/v0.2.0.md)
     （格式正本见 [docs/release-notes/README.md](release-notes/README.md)）；
-  - 发版 tag（`v0.1.0` 形式，tag 名 = 版本号）。
+  - 发版 tag（`v0.2.0` 形式，tag 名 = 版本号）。
 
 ## 4. 当前版本
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | **`0.1.0`** |
-| 日期 | **2026-10-21** |
-| 性质 | 首次公开版本（脱敏整理后的参考实现基线） |
+| 当前版本 | **`0.2.0`** |
+| 日期 | **2026-10-22** |
+| 性质 | 与设备版本对齐：新增干净出口自动切换，补回内存闸门 |
 
-首版 Release 说明见 [docs/release-notes/v0.1.0.md](release-notes/v0.1.0.md)。
-本版属**首次公开**（建立可发布基线），按 §1 走「有功能更新」那档 → `0.1.0`。
+本版 Release 说明见 [docs/release-notes/v0.2.0.md](release-notes/v0.2.0.md)。
+本版新增了干净出口自动切换能力，按 §1 走「有功能更新」那档 → `0.2.0`。
 
-> 首版已作为 `0.1.0` 发布；打 tag 时保持 CHANGELOG 段标题、Release 说明文件名与 tag 三处一致。
+> `0.2.0` 发布时保持 CHANGELOG 段标题、Release 说明文件名与 tag 三处一致。
 
 ## 5. 什么时候不动版本号
 

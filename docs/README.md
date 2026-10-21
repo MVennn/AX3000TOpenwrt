@@ -39,6 +39,7 @@
 
 | 位置 | 一句话定位 |
 |---|---|
+| [release-notes/v0.2.0.md](release-notes/v0.2.0.md) | 本版 Release 说明（面向使用者：干净出口自动切换、内存闸门） |
 | [release-notes/v0.1.0.md](release-notes/v0.1.0.md) | 首版 Release 说明（面向使用者：你现在能拿到什么） |
 | 仓库根 [CHANGELOG.md](../CHANGELOG.md) | 开发者记录：按对象拆行的变更清单（**版本号本身**在这里维护，规则见 [VERSIONING.md](VERSIONING.md)） |
 | 仓库根 [NOTICE](../NOTICE) | 第三方声明：引用 / 派生的开源项目、来源、许可证、为何使用 |

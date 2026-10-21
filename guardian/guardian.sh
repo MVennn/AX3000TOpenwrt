@@ -3,7 +3,7 @@
 # 网络守护 v3 —— 只做「检测 + 最小化修复」，绝不做破坏性操作
 #
 # 已知良好状态（2026-10-20 固化，依据实测）：
-#   - 🤖 干净出口 / 🤖 AI网页 = 🇮🇳 印度-备用m2（与订阅的 印度-优化 / 印度-备用ct2
+#   - 🤖 干净出口 / 🤖 AI网页 = 🇮🇳 印度-优化（与订阅的 印度-备用m2 / 印度-备用ct2
 #     三选一，三者共用同一干净出口 IP <CLEAN-EXIT-IP>，Google 侧 cc 恒为 IN；
 #     切入口不换 IP、只换链路，所以会话不受影响）
 #   - 🤖 人工智能 = 🤖 AI网页
@@ -48,9 +48,10 @@ enc() { echo "$1" | sed 's/ /%20/g'; }
 grp() { $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null | grep -oE '"now":"[^"]*"' | head -1 | sed 's/"now":"//;s/"$//'; }
 put() { $CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null; }
 
-# 被 Google 判为 CN 的节点（实测清单；台湾/美国是轮换 IP 池，判定会跳变，同样不可靠）
+# 被 Google 判为 CN 的节点（实测清单）。台湾-优化3 / 台湾-优化2-GPT 例外，见下方 CL_CANDIDATES。
 is_bad_node() {
   case "$1" in
+    *台湾-优化3*|*台湾-优化2-GPT*) return 1 ;;
     *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*过滤掉14条线路*) return 0 ;;
   esac
   return 1
@@ -88,13 +89,32 @@ else
     LAST=$(cat "$ALIVEF" 2>/dev/null || echo 0)
     NOWT=$(date +%s)
     if [ -f "$PIDFILE" ] || [ $((NOWT - LAST)) -lt 1800 ]; then
-      log "ALERT: CrashCore 进程不存在（可能是 OOM 被杀），用 start.sh 拉起"
-      /bin/ash /etc/ShellCrash/start.sh start >> "$LOG" 2>&1
-      sleep 12
-      if $CURL -s -m 5 -H "$AUTH" "$CTRL/version" >/dev/null 2>&1; then
-        log "FIX: CrashCore 已恢复"
+      # ---- U15 memory gate (helper: /etc/ShellCrash/memgate.sh) ----
+      # OOM-kill -> relaunch -> re-fill /tmp (RAM tmpfs) -> OOM -> hard reset.
+      # memgate.sh check: exit 0 = allow, exit 1 = blocked (it writes the WARNING
+      # itself to syslog and to .../logs/memgate.log, size capped).
+      _memgate_rc=0
+      if [ -f /etc/ShellCrash/memgate.sh ]; then
+        /etc/ShellCrash/memgate.sh check
+        _memgate_rc=$?
       else
-        log "ERROR: CrashCore 拉起后仍无响应，需人工介入"
+        # memgate.sh missing -> fail open (pre-U15 behaviour), warn once per boot
+        if [ ! -f /tmp/ShellCrash/.memgate_missing_warned_guardian ]; then
+          log "WARN: /etc/ShellCrash/memgate.sh 不存在，本轮无内存闸门保护地拉起 CrashCore"
+          touch /tmp/ShellCrash/.memgate_missing_warned_guardian 2>/dev/null
+        fi
+      fi
+      if [ "$_memgate_rc" -eq 1 ]; then
+        log "WARN: 可用内存不足，memgate 拦截本轮拉起（详见 /etc/ShellCrash/logs/memgate.log）；内存恢复后由下一轮 cron 重试"
+      else
+        log "ALERT: CrashCore 进程不存在（可能是 OOM 被杀），用 start.sh 拉起"
+        /bin/ash /etc/ShellCrash/start.sh start >> "$LOG" 2>&1
+        sleep 12
+        if $CURL -s -m 5 -H "$AUTH" "$CTRL/version" >/dev/null 2>&1; then
+          log "FIX: CrashCore 已恢复"
+        else
+          log "ERROR: CrashCore 拉起后仍无响应，需人工介入"
+        fi
       fi
     else
       log "INFO: CrashCore 已停止且近 30 分钟无存活记录（判定为人为停止），守护不做拉起，不妨碍维护"
@@ -140,6 +160,37 @@ if [ -n "$CL_NOW" ] && [ -n "$AW_NOW" ] && [ "$CL_NOW" != "$AW_NOW" ]; then
   fi
 fi
 
+# ---------- 2.3) 干净出口节点存活守卫（CLEAN_EXIT_ALIVE）----------
+# Selector 不会自动换节点。入口域名被 GSLB 轮到死后端时（2026-10-22 实测
+# m2/ct2 的 CNAME 同时指到一个已失效的后端），GitHub 全族会在 TLS 握手阶段
+# 5 秒超时，而 Gemini 可能仍然打得开 —— 3.6 的吞吐探测抓不到这种情况。
+# 这里按 GitHub 实链路判定存活：当前入口拨号失败就按「印度优先」换到第一个
+# 存活入口；三条印度入口共用同一出口 IP，换入口不改出口，会话不受影响。
+CL_ALIVE_CANDIDATES="${CL_ALIVE_CANDIDATES:-🇮🇳 印度-优化|🇮🇳 印度-备用m2|🇮🇳 印度-备用ct2|🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT}"
+CL_ALIVE_URL="${CL_ALIVE_URL:-https://github.com/}"
+node_alive() {
+  $CURL -s -m 8 -H "$AUTH" "$CTRL/proxies/$(enc "$1")/delay?timeout=5000&url=$(echo "$CL_ALIVE_URL" | sed "s|:|%3A|g;s|/|%2F|g")" 2>/dev/null | grep -q '"delay"'
+}
+CL_NOW=$(grp "$CL")
+if [ -n "$CL_NOW" ] && ! node_alive "$CL_NOW"; then
+  FOUND=""
+  OLDIFS="$IFS"; IFS="|"
+  for cand in $CL_ALIVE_CANDIDATES; do
+    [ "$cand" = "$CL_NOW" ] && continue
+    node_alive "$cand" || continue
+    FOUND="$cand"
+    if [ "$(put "$CL" "$cand")" = "204" ]; then
+      put "$AI_WEB" "$cand" >/dev/null 2>&1
+      log "FIX: 干净出口「$CL_NOW」GitHub 拨号失败，已切到存活入口「$cand」；AI网页组同步"
+    else
+      log "ERROR: 干净出口切到「$cand」失败（控制 API 拒绝）"
+    fi
+    break
+  done
+  IFS="$OLDIFS"
+  [ -z "$FOUND" ] && log "ALERT: 干净出口当前入口「$CL_NOW」GitHub 不可达，且候选入口全部不可达；GitHub/Gemini 可能打不开"
+fi
+
 # ---------- 3) 通用池：只有落在坏节点清单里才复位 ----------
 NODE_NOW=$(grp "$POOL_GROUP")
 if [ -n "$NODE_NOW" ]; then
@@ -177,12 +228,11 @@ fi
 #     偶发吞吐塌陷，耗时 22s / 25s 超时；但小响应的 API 端点始终 0.9s ——
 #     所以健康探测必须用真实页面，用 API 端点抓不到这个长尾。
 #   - 自建的 m2 / ct2 两个入口（与订阅同端口同 Host）实测稳定在 1.5-1.8s。
-#   - 三条入口共用同一干净出口 IP <CLEAN-EXIT-IP>（Google 恒判 cc=IN），
+#   - 2026-10-21：该出口已变成轮换池（TW/CN 跳变），见下方候选说明。
 #     切入口不换 IP、只换链路，对已登录的 Google 会话无感。
-# 候选顺序按实测稳定性排：自建入口优先，订阅入口兜底。
-# 绝不降级到非印度节点：实测机场 27 个节点里其余全部 cc=CN（美/日/新/台/英/加/德/港），
-# Google 会直接拒绝服务并提示「不支持此国家」。
-CL_CANDIDATES="${CL_CANDIDATES:-🇮🇳 印度-备用m2|🇮🇳 印度-备用ct2|🇮🇳 印度-优化}"
+# 2026-10-21 复测：机场的 Google 落地不再是恒定印度 IP，而是在 TW/CN 间轮换；
+# 30 个节点里只有台湾-优化3 / 台湾-优化2-GPT 能出 cc=TW；候选改为台湾优先、印度兜底。
+CL_CANDIDATES="${CL_CANDIDATES:-🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT|🇮🇳 印度-备用m2|🇮🇳 印度-备用ct2|🇮🇳 印度-优化}"
 CL_PROBE_URL="https://gemini.google.com/"
 
 clean_exit_ms() {
@@ -213,10 +263,10 @@ if [ -n "$CUR_CL" ] && clean_exit_bad; then
   IFS="$OLDIFS"
   if [ -n "$FIXED" ]; then
     put "$AI_WEB" "$FIXED" >/dev/null 2>&1
-    log "FIX: 干净出口劣化（当前入口「$CUR_CL」），已换到「$FIXED」（同一出口 IP <CLEAN-EXIT-IP>，不影响会话）；AI网页组同步"
+    log "FIX: 干净出口劣化（当前入口「$CUR_CL」），已换到「$FIXED」（同一出口 IP，不影响会话）；AI网页组同步"
   else
     [ "$CUR_CL" != "$(grp "$CL")" ] && put "$CL" "$CUR_CL" >/dev/null 2>&1
-    log "ALERT: 干净出口三个入口全部劣化（已保持「$CUR_CL」），Gemini 可能打不开；不降级到非印度节点（Google 会判为 CN 并拒绝服务）"
+    log "ALERT: 干净出口候选入口全部劣化（已保持「$CUR_CL」），Gemini 可能打不开"
   fi
 fi
 
