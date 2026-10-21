@@ -1,0 +1,39 @@
+# Put your custom commands here that should be executed once
+
+# ShellCrash: /tmp is tmpfs, create runtime dir before S99shellcrash
+mkdir -p /tmp/ShellCrash
+# the system init finished. By default this file does nothing.
+
+# QUIC fast-fail for mihomo fake-IP ranges (Redir mode does not proxy UDP).
+nft list table inet quicguard >/dev/null 2>&1 || nft -f /etc/quicguard.nft
+
+# Redirect Google CN-edge TCP to mihomo so domain rules apply.
+nft list table inet googlecn >/dev/null 2>&1 || nft -f /etc/googlecn.nft
+
+# VAR_RUNTIME_DIRS: /var 是指向 /tmp 的软链, 这些运行时目录被误删会导致
+# dnsmasq 起不来(-C /var/etc/dnsmasq.conf.*) 等服务异常, 开机时兜底重建
+mkdir -p /var/etc /var/lib /var/run /var/lock /var/state /var/spool /var/shm /var/tmp /var/overlay /var/sysinfo /var/odhcpd-piodir /var/resolv.conf.d /var/log
+
+nft list table inet mixedport >/dev/null 2>&1 || nft -f /etc/mixedport.nft
+
+# 开机自检: 若上次是用 reboot-verify.sh start 触发的重启, 就跑一遍验收并出报告
+# (busybox crond 不支持 @reboot, 所以用标记文件 + rc.local 派发)
+[ -f /etc/router-health/.reboot-pending ] && /bin/ash /etc/router-health/reboot-verify.sh post
+
+# Google push/Play ports -> mihomo (independent table, survives ShellCrash restart)
+# 这张表里含 DNS 劫持(53 -> 1053)。核心还没起来就加载的话，内网所有域名会被指向
+# 一个没人监听的端口 —— 表现就是「WiFi 连上了但没网」，要等守护进程 5 分钟后才发现。
+# 所以先等核心的 DNS 端口就绪再加载；等不到就不加载（守护进程会在核心起来后补上）。
+i=0
+while [ $i -lt 45 ]; do
+  netstat -lntp 2>/dev/null | grep -q ':1053' && break
+  sleep 2
+  i=$((i + 1))
+done
+if netstat -lntp 2>/dev/null | grep -q ':1053'; then
+  nft list table inet googleroute >/dev/null 2>&1 || nft -f /etc/googleroute.nft
+else
+  logger -t rc.local "mihomo DNS(1053) 90s 内未就绪，暂不加载 googleroute（含 DNS 劫持），交由守护进程补载"
+fi
+
+exit 0

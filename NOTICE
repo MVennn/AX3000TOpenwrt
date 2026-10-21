@@ -1,0 +1,106 @@
+ax3000t-openwrt
+小米 AX3000T 路由器运维仓库
+
+本仓库自身的许可证为 **MIT License**（全文见仓库根 [LICENSE](LICENSE)）。
+下列第三方项目各自适用其自己的许可证。
+
+本仓库的脚本与文档建立在下列第三方开源项目之上。这些项目**不被本仓库重新分发**，
+仅在设备侧安装使用；本仓库只保存与之相关的配置片段、脚本与文档。
+
+==============================================================================
+Third-party components
+
+- OpenWrt
+  https://openwrt.org/ ；https://github.com/openwrt/openwrt
+  Licensed under the Apache License, Version 2.0.
+  用途：路由器固件本体（25.12.6，内核 6.12.112）。本仓库的 rc.local、
+  fw4/nft 规则、uci 配置与 busybox 工具链都跑在它上面。
+  本仓库分发的是**自定义的 UCI 配置与 nft 规则片段**，不含 OpenWrt 源码。
+  是否随仓分发：**否** —— 仓库体积 316,997 KB 远超 5 MB 门槛，
+  且 GitHub 侧 license 字段为 NOASSERTION（许可证以 LICENSES/ 目录逐包声明）。
+  本仓库脚本依赖的上游行为与对应源码路径，逐条记在
+  [docs/UPSTREAM.md](docs/UPSTREAM.md)。
+
+- LuCI
+  https://openwrt.org/ ；https://github.com/openwrt/luci
+  Licensed under the Apache License, Version 2.0.
+  用途：设备上的 Web 管理界面。本仓库把它当作**设备侧应急入口**与
+  CGI 约定 / 授权模型的参照（会话、ACL、CSRF token），
+  不复制其任何源码，也不在设备上改动它。
+  是否随仓分发：**否** —— 仓库体积 596,030 KB 远超 5 MB 门槛。
+  详见 [docs/UPSTREAM.md](docs/UPSTREAM.md) §3。
+
+- ShellCrash (nekoii/shellcrash)
+  https://github.com/nekoii/shellcrash
+  Licensed under the GNU General Public License v3.0 (GPL-3.0).
+  用途：代理配置生成与运行时。本仓库的守护脚本直接调用它提供的
+  /etc/ShellCrash/start.sh、task/task.sh、starts/start_legacy_wd.sh，
+  并读取 /etc/ShellCrash/configs/ShellCrash.cfg 里的 secret= 行。
+  ⚠️ 本仓库**不**分发 ShellCrash 本体或任何被其官方更新覆盖的文件；
+  被本地改造过的 starts/*.sh 补丁属本仓库自有内容。
+
+- mihomo (MetaCubeX/mihomo)
+  https://github.com/MetaCubeX/mihomo
+  Licensed under the GNU General Public License v3.0 (GPL-3.0).
+  用途：代理内核。设备侧落地为 /etc/ShellCrash/CrashCore.raw，
+  对外提供 Redir 透明代理端口 7892 与控制 API 127.0.0.1:9999。
+  本仓库**不**分发核心二进制（core-upgrade.sh 只从官方 release 下载）。
+
+- MetaCubeX meta-rules-dat（geosite / geoip 规则集）
+  https://github.com/MetaCubeX/meta-rules-dat
+  Licensed under the GNU General Public License v3.0 (GPL-3.0).
+  用途：分流规则集的数据来源。ShellCrash 侧的 ai-rules-update.sh 拉取其中的
+  AI 分类，生成 yamls/rules.yaml。本仓库只引用来源地址，不分发规则集本体。
+
+- art-design-pro (Daymychen/art-design-pro)
+  https://github.com/Daymychen/art-design-pro
+  Licensed under the MIT License.
+  用途：设计令牌来源（色板 / 间距 / 圆角）。本仓库**仅**把其中若干色值
+  作为对比度与可读性的基准引用（例如 --art-gray-600 #7987a1），
+  不是代码依赖，也未复制其源码。
+  是否随仓分发：**否**（本仓库不做界面，不需要 vendor 一套前端模板）。
+
+- nftables
+  https://nftables.org/ ；Linux 内核（GPL-2.0）
+  用途：防火墙规则。本仓维护的四张自建表 inet quicguard / googlecn /
+  googleroute / mixedport 均为本仓库自有内容，其语法与语义依据 nftables 文档。
+
+==============================================================================
+Vendored third-party code
+
+本仓库**不 vendor 任何上游源码**。候选上游与「为什么不 vendor」的逐条判定见
+[third-party/README.md](third-party/README.md)；本仓脚本依赖的上游行为、
+以及对应的上游源码路径，见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
+
+==============================================================================
+Acknowledgements
+
+- 本仓库的 `guardian/guardian.sh` 与 `recovery/recover-now.sh` 是从零写的，
+  但它们处理的每一个对象（ShellCrash 的运行时目录、mihomo 的控制 API、
+  nft 的表名与端口）都属于上述第三方项目的事实性接口 —— 这些接口名是事实，
+  不因引用而改变其版权归属。
+
+- 文档里出现的大段实测结论（内存、闪存、出口地区判定等）来自参考设备的
+  实测记录，版权归本仓库贡献者所有，以 MIT License 发布。
+
+==============================================================================
+Trademarks
+
+「小米」「AX3000T」「MT7981」等商标与标识的权利归其各自权利人所有。
+本项目与小米公司、OpenWrt 基金会及上述其它项目作者不存在任何隶属、合作、
+授权、认可或支持关系。
+
+==============================================================================
+Credentials
+
+**本仓库不保存凭据。** 文档里出现的是 `<REDACTED-...>` / `<YOUR-...>` 占位符，
+脚本从环境变量或设备侧真源读取：
+
+| 凭据 | 现在的取法 |
+| --- | --- |
+| root 口令 | 环境变量 `ROUTER_PASSWORD`，或 `recovery/local-tools/.router-password`（不入库） |
+| mihomo 控制 API secret | 设备 `/etc/ShellCrash/configs/ShellCrash.cfg` 的 `secret=` 行 |
+| mihomo 地址 / 端口 | 环境变量 `MIHOMO_HOST` / `MIHOMO_PORT` |
+
+位置索引与轮换建议见 [docs/SECRETS.md](docs/SECRETS.md)。
+**占位符不是秘密，但也别把真值填回文档** —— 真值只放设备上或本机密码管理器。
