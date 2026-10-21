@@ -49,13 +49,13 @@ grp() { $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null | grep 
 put() { $CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null; }
 
 # 被 Google 判为 CN 的节点（实测清单）。台湾-优化3 / 台湾-优化2-GPT 例外，见下方 CL_CANDIDATES。
-# 2026-10-22：机场的 vmess 池（xiaoyan/mobgslb 三条入口）全部判 cc=CN，
+# 2026-10-22：机场的 vmess 池（xiaoyan/mobgslb 三条入口，含全部印度节点）全部判 cc=CN，
 #   新出现的 Hysteria2 池（*.mjhy2.com）实测 4 个节点全部 cc=SG —— 它们是干净出口。
 is_bad_node() {
   case "$1" in
     *-HY2*) return 1 ;;
     *台湾-优化3*|*台湾-优化2-GPT*) return 1 ;;
-    *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*过滤掉14条线路*|*过滤掉10条线路*) return 0 ;;
+    *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*印度*|*过滤掉14条线路*|*过滤掉10条线路*) return 0 ;;
   esac
   return 1
 }
@@ -169,8 +169,9 @@ fi
 # 5 秒超时，而 Gemini 可能仍然打得开 —— 3.6 的吞吐探测抓不到这种情况。
 # 这里按 GitHub 实链路判定存活：当前入口拨号失败就按「HY2 优先」换到第一个
 # 存活入口。2026-10-22 起干净出口首选 Hysteria2 池（*.mjhy2.com，实测 cc=SG），
-# vmess 池（xiaoyan/mobgslb）整池被判 cc=CN，只作最后兜底。
-CL_ALIVE_CANDIDATES="${CL_ALIVE_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇭🇰 香港HK-HY2|🇹🇼 台湾-优化3|🇮🇳 印度-优化}"
+# vmess 池（xiaoyan/mobgslb）整池被判 cc=CN，已从候选里剔除 —— 否则会和 2.1
+# 「锁到干净节点」互相切换（2.3 切到印度、2.1 又切回 HY2，每 5 分钟一次）。
+CL_ALIVE_CANDIDATES="${CL_ALIVE_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3}"
 CL_ALIVE_URL="${CL_ALIVE_URL:-https://github.com/}"
 node_alive() {
   $CURL -s -m 8 -H "$AUTH" "$CTRL/proxies/$(enc "$1")/delay?timeout=5000&url=$(echo "$CL_ALIVE_URL" | sed "s|:|%3A|g;s|/|%2F|g")" 2>/dev/null | grep -q '"delay"'
@@ -238,7 +239,7 @@ fi
 # 30 个节点里只有台湾-优化3 / 台湾-优化2-GPT 能出 cc=TW；候选改为台湾优先、印度兜底。
 # 2026-10-22：上述 vmess 池 5 个候选全部判 cc=CN（含手机同款「新加坡-优化3」）；
 # 机场新给的 Hysteria2 池 4 个节点全部 cc=SG，故候选改为 HY2 优先。
-CL_CANDIDATES="${CL_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇭🇰 香港HK-HY2|🇹🇼 台湾-优化3|🇮🇳 印度-优化}"
+CL_CANDIDATES="${CL_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3}"
 CL_PROBE_URL="https://gemini.google.com/"
 
 clean_exit_ms() {
