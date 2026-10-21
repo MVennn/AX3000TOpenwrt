@@ -9,6 +9,23 @@
 
 ---
 
+## [0.3.1] — 2026-10-22
+
+补掉干净出口候选里的两个坑：印度节点已判 CN、香港 HY2 不在组内。
+
+### 修复
+
+- 修复 `guardian/guardian.sh` —— `is_bad_node` 把 `*印度*` 计入「判 CN」：印度池整池已 `cc=CN`，手动选中后守护进程要能纠正
+- 修复 `guardian/guardian.sh` —— `CL_CANDIDATES` / `CL_ALIVE_CANDIDATES` 去掉印度与香港 HY2：印度会与 2.1「锁到干净节点」互相切换（每 5 分钟一次），香港 HY2 被 exclude-filter 挡住、`put` 必然失败
+
+### 部署验证（2026-10-22）
+
+- 备份：`/etc/ShellCrash/guardian.sh.bak-subsync-20261022`
+- 手动跑一轮 guardian：无 FIX/ALERT，干净出口仍停在 `🇸🇬 新加坡SG-HY2`
+- `cc='SG'`；`gemini.google.com/app` 200 / 0.29s
+
+---
+
 ## [0.3.0] — 2026-10-22
 
 干净出口从 vmess 池（整池被判 `cc=CN`）切到 Hysteria2 池（`cc=SG`），Gemini 恢复。
