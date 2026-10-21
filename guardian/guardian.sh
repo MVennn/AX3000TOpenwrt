@@ -29,7 +29,7 @@ ALIVEF=/tmp/ShellCrash/.proxy_alive
 AI_GROUP="${AI_GROUP:-🤖 人工智能}"
 AI_WEB="${AI_WEB:-🤖 AI网页}"
 CL="${CLEAN_GROUP:-🤖 干净出口}"
-CLEAN_NODE="${CLEAN_NODE:-🇮🇳 印度-优化}"
+CLEAN_NODE="${CLEAN_NODE:-🇸🇬 新加坡SG-HY2}"
 POOL_GROUP="${POOL_GROUP:-🚀 节点选择}"
 POOL_FALLBACK_GROUP="${POOL_FALLBACK_GROUP:-♻️ 自动选择}"
 
@@ -49,10 +49,13 @@ grp() { $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null | grep 
 put() { $CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null; }
 
 # 被 Google 判为 CN 的节点（实测清单）。台湾-优化3 / 台湾-优化2-GPT 例外，见下方 CL_CANDIDATES。
+# 2026-10-22：机场的 vmess 池（xiaoyan/mobgslb 三条入口）全部判 cc=CN，
+#   新出现的 Hysteria2 池（*.mjhy2.com）实测 4 个节点全部 cc=SG —— 它们是干净出口。
 is_bad_node() {
   case "$1" in
+    *-HY2*) return 1 ;;
     *台湾-优化3*|*台湾-优化2-GPT*) return 1 ;;
-    *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*过滤掉14条线路*) return 0 ;;
+    *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*过滤掉14条线路*|*过滤掉10条线路*) return 0 ;;
   esac
   return 1
 }
@@ -164,9 +167,10 @@ fi
 # Selector 不会自动换节点。入口域名被 GSLB 轮到死后端时（2026-10-22 实测
 # m2/ct2 的 CNAME 同时指到一个已失效的后端），GitHub 全族会在 TLS 握手阶段
 # 5 秒超时，而 Gemini 可能仍然打得开 —— 3.6 的吞吐探测抓不到这种情况。
-# 这里按 GitHub 实链路判定存活：当前入口拨号失败就按「印度优先」换到第一个
-# 存活入口；三条印度入口共用同一出口 IP，换入口不改出口，会话不受影响。
-CL_ALIVE_CANDIDATES="${CL_ALIVE_CANDIDATES:-🇮🇳 印度-优化|🇮🇳 印度-备用m2|🇮🇳 印度-备用ct2|🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT}"
+# 这里按 GitHub 实链路判定存活：当前入口拨号失败就按「HY2 优先」换到第一个
+# 存活入口。2026-10-22 起干净出口首选 Hysteria2 池（*.mjhy2.com，实测 cc=SG），
+# vmess 池（xiaoyan/mobgslb）整池被判 cc=CN，只作最后兜底。
+CL_ALIVE_CANDIDATES="${CL_ALIVE_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇭🇰 香港HK-HY2|🇹🇼 台湾-优化3|🇮🇳 印度-优化}"
 CL_ALIVE_URL="${CL_ALIVE_URL:-https://github.com/}"
 node_alive() {
   $CURL -s -m 8 -H "$AUTH" "$CTRL/proxies/$(enc "$1")/delay?timeout=5000&url=$(echo "$CL_ALIVE_URL" | sed "s|:|%3A|g;s|/|%2F|g")" 2>/dev/null | grep -q '"delay"'
@@ -232,7 +236,9 @@ fi
 #     切入口不换 IP、只换链路，对已登录的 Google 会话无感。
 # 2026-10-21 复测：机场的 Google 落地不再是恒定印度 IP，而是在 TW/CN 间轮换；
 # 30 个节点里只有台湾-优化3 / 台湾-优化2-GPT 能出 cc=TW；候选改为台湾优先、印度兜底。
-CL_CANDIDATES="${CL_CANDIDATES:-🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT|🇮🇳 印度-备用m2|🇮🇳 印度-备用ct2|🇮🇳 印度-优化}"
+# 2026-10-22：上述 vmess 池 5 个候选全部判 cc=CN（含手机同款「新加坡-优化3」）；
+# 机场新给的 Hysteria2 池 4 个节点全部 cc=SG，故候选改为 HY2 优先。
+CL_CANDIDATES="${CL_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇭🇰 香港HK-HY2|🇹🇼 台湾-优化3|🇮🇳 印度-优化}"
 CL_PROBE_URL="https://gemini.google.com/"
 
 clean_exit_ms() {
@@ -298,8 +304,8 @@ fi
 # ---------- 6) 探活与内存水位（内存不足是 OOM 根因，必须盯） ----------
 # Google 侧地区判定探测：support.google.com 的 cc 变量在页面 1MB 之后，整页 1.6MB，
 # 所以每 60 分钟探一次（全天约 23MB），不要每 5 分钟拉一次。
-# cc 一旦不再是 IN，说明机场把印度出口 IP 换成了被判为 CN 的地址，
-# Gemini 会直接报「不支持此国家」，只能换机场节点。
+# cc 只有 CN / HK 会让 Gemini 直接报「不支持此国家」；2026-10-22 起干净出口
+# 走 Hysteria2 池（实测 cc=SG），所以不再要求必须是 IN。
 CCF=/tmp/ShellCrash/.cc_probe_ts
 NOWT2=$(date +%s)
 LASTF2=$(cat "$CCF" 2>/dev/null || echo 0)
@@ -307,8 +313,10 @@ if [ $((NOWT2 - LASTF2)) -ge 3600 ]; then
   echo $NOWT2 > "$CCF"
   CC=$($CURL -s -m 20 -x "$PROXY" "https://support.google.com/gemini/answer/13575153" 2>/dev/null | grep -oE "var cc=.[A-Z]{2}" | head -1 | sed "s/var cc=.//")
   if [ -n "$CC" ]; then
-    log "INFO: Google 侧出口判定 cc=$CC（干净出口，期望 IN）"
-    [ "$CC" != "IN" ] && log "ALERT: Google 把干净出口判为 cc=$CC（不再是印度），Gemini 会报「不支持此国家」，需更换机场节点"
+    case "$CC" in
+      CN|HK) log "ALERT: Google 把干净出口判为 cc=$CC（Gemini 不支持该地区），需切到 HY2 节点" ;;
+      *) log "INFO: Google 侧出口判定 cc=$CC（干净出口可用）" ;;
+    esac
   else
     log "WARN: Google 侧 cc 探测未取到结果（页面 1.6MB 未下完或节点超时）"
   fi
