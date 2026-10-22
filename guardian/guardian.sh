@@ -34,7 +34,7 @@ CL="${CLEAN_GROUP:-🤖 干净出口}"
 # 不再写死单个 CLEAN_NODE —— 2026-10-22 实测 HY2 四个节点全挂，写死目标会让
 # 2.1「锁干净节点」把组切到死节点、2.3「存活守卫」再切走，每 5 分钟打一次。
 CLEAN_CANDIDATES="${CLEAN_NODE:+$CLEAN_NODE|}${CLEAN_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT}"
-CL_ALIVE_URL="${CL_ALIVE_URL:-https://github.com/}"
+CL_ALIVE_URL="${CL_ALIVE_URL:-https://www.google.com/generate_204}"
 CLEAN_CACHE=/tmp/ShellCrash/.clean_node
 CLEAN_VERDICT_FILE=/tmp/ShellCrash/.clean_verdict
 CLEAN_RETRY="${CLEAN_RETRY:-600}"
@@ -56,7 +56,8 @@ enc() { echo "$1" | sed 's/ /%20/g'; }
 grp() { $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null | grep -oE '"now":"[^"]*"' | head -1 | sed 's/"now":"//;s/"$//'; }
 put() { $CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null; }
 
-# 节点到 GitHub 的实链路探测：有 delay 字段就算可达。
+# 节点到 Google 的实链路探测：有 delay 字段就算可达。
+# 干净出口只服务 Google 家族；GitHub 由 🔗 GitHub 出口 组自行 url-test（2026-10-22 拆组）。
 node_alive() {
   $CURL -s -m 8 -H "$AUTH" "$CTRL/proxies/$(enc "$1")/delay?timeout=5000&url=$(echo "$CL_ALIVE_URL" | sed "s|:|%3A|g;s|/|%2F|g")" 2>/dev/null | grep -q '"delay"'
 }
@@ -72,12 +73,12 @@ in_clean_list() {
 
 # 解析本轮唯一的干净出口，全脚本只认这一个结果（2.1 / 2.3 / 3.6 共用），
 # 避免各段各自挑节点导致每 5 分钟互相切换。优先级：
-#   1) 当前入口在候选里且 GitHub 可达 → 保持不动（稳定优先，HY2 恢复也不主动切回）；
+#   1) 当前入口在候选里且 Google 可达 → 保持不动（稳定优先，HY2 恢复也不主动切回）；
 #   2) 上次扫描已判定「全挂」且未到重试时间 → 不再重复扫，直接保持当前；
 #   3) 按候选顺序找第一个可达的；
 #   4) 全挂 → 返回当前入口，并把 verdict=0 写盘，由 2.3 告警。
 # 探测结论写到 CLEAN_VERDICT_FILE：1=有可达入口，0=全部不可达。2.3 直接复用，
-# 不再二次探测 —— 节点到 GitHub 是间歇性抖动的，连探两次会得出相反结论。
+# 不再二次探测 —— 节点到 Google 是间歇性抖动的，连探两次会得出相反结论。
 resolve_clean_node() {
   _cur=$(grp "$CL")
   if [ -n "$_cur" ] && in_clean_list "$_cur" && node_alive "$_cur"; then
@@ -203,7 +204,7 @@ fi
 
 # ---------- 2.1) AI网页 / 干净出口 锁到同一个干净节点 ----------
 # 目标节点每轮只解析一次（resolve_clean_node）：当前入口在候选里且可达就不动，
-# 否则按候选顺序找第一个可达的。判定条件是「判 CN 的坏节点 或 GitHub 不可达」，
+# 否则按候选顺序找第一个可达的。判定条件是「判 CN 的坏节点 或 Google 不可达」，
 # 死节点也在这里被换掉，不再依赖 2.3 事后补救。
 CLEAN_NODE=$(resolve_clean_node)
 if [ -z "$CLEAN_NODE" ]; then
@@ -237,12 +238,12 @@ fi
 # ---------- 2.3) 干净出口结果校验（CLEAN_EXIT_ALIVE）----------
 # 切换已在 2.1 完成（目标节点就是解析出的可达节点），这里只校验结果：
 # 如果最终入口仍不可达，说明候选全挂，必须显式告警。
-# 历史：入口域名被 GSLB 轮到死后端时，GitHub 全族会在 TLS 握手阶段 5 秒超时，
+# 历史：入口域名被 GSLB 轮到死后端时，Google 全族会在 TLS 握手阶段 5 秒超时，
 # 而 Gemini 可能仍然打得开 —— 3.6 的吞吐探测抓不到这种情况，所以单独校验。
 CL_NOW=$(grp "$CL")
 CLEAN_OK=$(cat "$CLEAN_VERDICT_FILE" 2>/dev/null || echo 1)
 if [ -n "$CL_NOW" ] && [ "$CLEAN_OK" != "1" ]; then
-  log "ALERT: 干净出口候选入口全部不可达（当前入口「$CL_NOW」），GitHub/Gemini 可能打不开"
+  log "ALERT: 干净出口候选入口全部不可达（当前入口「$CL_NOW」），Gemini/Google 可能打不开"
 fi
 
 # ---------- 3) 通用池：只有落在坏节点清单里才复位 ----------

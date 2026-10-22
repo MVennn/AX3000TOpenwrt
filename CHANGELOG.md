@@ -17,10 +17,15 @@
 ### 新增
 
 - 新增 `guardian/guardian.sh` 的 `resolve_clean_node` —— 每轮只解析一次干净出口：
-  当前入口在 `CLEAN_CANDIDATES` 里且 GitHub 可达就保持不动，否则按
+  当前入口在 `CLEAN_CANDIDATES` 里且可达就保持不动，否则按
   `HY2 ×3 → 台湾-优化3 → 台湾-优化2-GPT` 取第一个可达的。2.1 / 2.3 / 3.6 共用这一个结果
 - 新增 `guardian/guardian.sh` —— 全部候选不可达时 10 分钟内不再重复扫描（`CLEAN_RETRY`），
   避免整池挂掉时每 5 分钟空转 40 秒
+- 调整 `guardian/guardian.sh` —— `CL_ALIVE_URL` 从 `https://github.com/` 改为
+  `https://www.google.com/generate_204`：2026-10-22 起 GitHub 全族已拆到独立的
+  `🔗 GitHub 出口` 组（`ShellcrashRules` 侧，url-test 按 GitHub 可达性选路），
+  干净出口只服务 Google。探针口径必须跟着改 —— 否则守卫会按 GitHub 可达性
+  把「Gemini 用着好、GitHub 不通」的节点踢掉，而那个节点对 Google 恰恰是对的
 
 ### 修复
 
