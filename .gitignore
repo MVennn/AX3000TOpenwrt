@@ -55,6 +55,8 @@ generated-config.yaml
 *~
 .DS_Store
 Thumbs.db
+# fix-router 把恢复脚本的完整输出（内网拓扑 / nft 表 / 出口 IP）写在这里
+/recovery/local-tools/recover-output.txt
 
 # --- 构建与工具残留 ------------------------------------------------------
 __pycache__/

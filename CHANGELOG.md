@@ -11,6 +11,25 @@
 
 ## [未发布] — 2026-10-22 ~ 2026-10-23
 
+### 守卫与恢复脚本（2026-10-23）
+
+- 修复 `guardian/guardian.sh` —— 3.5 / 3.6 的耗时计算把「取较慢那次」写成了
+  「取 max 后再除 2」，算出的值只有真实值的一半（实测 3.2/2.8 得 1.6）。
+  后果是劣化阈值被系统性抬高约一倍：`EXIT_MAX_SEC=3` 实际要真实 6 秒才触发，
+  节点劣化守卫长期失灵。改为取 max 不除；同时新增 `ge_sec` 用数值比较替代
+  case glob（`10.0` / `12.5` 这类两位数带小数的耗时不会命中旧模式，判据被跳过）
+- 修复 `recovery/recover-now.sh` —— `check` 模式声明「只诊断、不改任何东西」，
+  但第 1 节在 mode 判断之前就备份并重写 `fake_ip_filter`；现在 check 分支只打印现状
+- 修复 `recovery/local-tools/fix-router.sh` —— 路由器不可达 / SSH 失败只打印一行
+  就继续切回热点，用户看到「跑完 4 步」而实际一步都没做成。现在不可达直接
+  `exit 1` 并保持连在路由器 WiFi，SSH 退出码透传成脚本退出码
+- 调整 `.gitignore` —— 忽略 `recovery/local-tools/recover-output.txt`
+  （恢复脚本会把内网拓扑、nft 表、出口 IP 写到这个文件，此前 `git add -A` 会带进仓）
+- 验证 —— 三个脚本 `sh -n` / `bash -n` ✓；耗时计算用 3.2/2.8、5.9/6.1、12.5/3.0
+  三组样本核对（分别得 3.2 / 6.1 / 12.5）；`check-vault-not-staged --all` ✓、
+  `check-secrets.py` ✓（55 个文件）、`check-docs.py` ✓（21 篇）
+
+
 ### 仓库门面
 
 - 新增 `.github/ISSUE_TEMPLATE/` —— 问题反馈（Bug）与功能建议两套表单，外加 `config.yml`：

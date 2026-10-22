@@ -21,7 +21,10 @@ for i in $(seq 1 20); do
     break
   fi
 done
-ping -n 1 -w 1000 "$ROUTER_IP" >/dev/null 2>&1 || { echo "!! 路由器仍不可达，放弃修复"; }
+if ! ping -n 1 -w 1000 "$ROUTER_IP" >/dev/null 2>&1; then
+  echo "!! 路由器仍不可达，放弃修复（保持在路由器 WiFi，不切回热点）"
+  exit 1
+fi
 
 echo "=== [2/4] 推送并执行恢复脚本 ==="
 "$SSH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=12 \
@@ -32,4 +35,5 @@ echo "=== ssh 退出码: $RC ==="
 echo "=== [3/4] 切回热点 ($SSID_HOTSPOT) ==="
 netsh wlan connect name="$SSID_HOTSPOT" 2>&1 | tr -d '\r'
 sleep 3
-echo "=== [4/4] 结束 ==="
+echo "=== [4/4] 结束（ssh 退出码 $RC）==="
+exit "$RC"

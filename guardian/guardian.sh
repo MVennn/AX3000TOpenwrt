@@ -141,6 +141,10 @@ eff_node() {
   esac
 }
 
+# 秒数比较用数值，不用 case glob —— "10.0" / "12.5" 这类带小数点的
+# 两位数以上耗时不会命中 "3.*|4.*|…" 那套模式，判据会被静默跳过。
+ge_sec() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 >= b+0)}'; }
+
 if [ -f "$LOG" ]; then
   SZ=$(wc -c < "$LOG" 2>/dev/null || echo 0)
   [ "$SZ" -gt 204800 ] && { tail -60 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"; }
@@ -265,16 +269,15 @@ fi
 T1=$(/usr/bin/curl -s -m 12 -o /dev/null -w "%{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
 T2=$(/usr/bin/curl -s -m 12 -o /dev/null -w "%{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
 if [ -n "$T1" ] && [ -n "$T2" ]; then
-  MS=$(echo "$T1 $T2" | awk '{t+=($1>$2?$1:$2)} END{printf "%.1f", t/2}')
-  case "$MS" in
-    3.*|4.*|5.*|6.*|7.*|8.*|9.*|[1-9][0-9]*)
-      if [ "$(put "$POOL_GROUP" "$POOL_FALLBACK_GROUP")" = "204" ]; then
-        log "FIX: 通用出口耗时 ${MS}s（>3s，疑似节点劣化），复位为「♻️ 自动选择」"
-      else
-        log "ERROR: 通用出口复位失败（控制 API 拒绝）"
-      fi
-      ;;
-  esac
+  # 两次探测取较慢那次；取 max 后不能再除 2（除 2 会把阈值整体压低一半）。
+  MS=$(echo "$T1 $T2" | awk '{t+=($1>$2?$1:$2)} END{printf "%.1f", t}')
+  if ge_sec "$MS" 3; then
+    if [ "$(put "$POOL_GROUP" "$POOL_FALLBACK_GROUP")" = "204" ]; then
+      log "FIX: 通用出口耗时 ${MS}s（>3s，疑似节点劣化），复位为「♻️ 自动选择」"
+    else
+      log "ERROR: 通用出口复位失败（控制 API 拒绝）"
+    fi
+  fi
 fi
 
 # ---------- 3.6) 干净出口健康守卫（CLEAN_EXIT_HEALTH）----------
@@ -296,14 +299,11 @@ clean_exit_ms() {
   C1=$(/usr/bin/curl -s -m 15 -o /dev/null --max-filesize 131072 -w "%{time_total}" -x "$PROXY" "$CL_PROBE_URL" 2>/dev/null)
   C2=$(/usr/bin/curl -s -m 15 -o /dev/null --max-filesize 131072 -w "%{time_total}" -x "$PROXY" "$CL_PROBE_URL" 2>/dev/null)
   [ -z "$C1" ] && [ -z "$C2" ] && { echo "99"; return; }
-  echo "$C1 $C2" | awk '{t+=($1>$2?$1:$2)} END{printf "%.1f", t/2}'
+  echo "$C1 $C2" | awk '{t+=($1>$2?$1:$2)} END{printf "%.1f", t}'
 }
 clean_exit_bad() {
   MS=$(clean_exit_ms)
-  case "$MS" in
-    4.*|5.*|6.*|7.*|8.*|9.*|[1-9][0-9]*) return 0 ;;
-    *) return 1 ;;
-  esac
+  ge_sec "$MS" 4
 }
 CUR_CL=$(grp "$CL")
 if [ -n "$CUR_CL" ] && clean_exit_bad; then
