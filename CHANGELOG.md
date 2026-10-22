@@ -9,6 +9,45 @@
 
 ---
 
+## [0.4.0] — 2026-10-22
+
+干净出口不再写死单个节点：HY2 池整池挂掉时自动退到台湾入口，消除 2.1 与 2.3
+每 5 分钟互切的抖动。
+
+### 新增
+
+- 新增 `guardian/guardian.sh` 的 `resolve_clean_node` —— 每轮只解析一次干净出口：
+  当前入口在 `CLEAN_CANDIDATES` 里且 GitHub 可达就保持不动，否则按
+  `HY2 ×3 → 台湾-优化3 → 台湾-优化2-GPT` 取第一个可达的。2.1 / 2.3 / 3.6 共用这一个结果
+- 新增 `guardian/guardian.sh` —— 全部候选不可达时 10 分钟内不再重复扫描（`CLEAN_RETRY`），
+  避免整池挂掉时每 5 分钟空转 40 秒
+
+### 修复
+
+- 修复 `guardian/guardian.sh` —— 2.1 的切换条件从「判 CN」扩到「判 CN **或** GitHub 不可达」，
+  死节点在同一处换掉，不再依赖 2.3 事后补救
+- 修复 `guardian/guardian.sh` —— 探测结论写 `/tmp/ShellCrash/.clean_verdict`，2.3 直接复用、
+  不再二次探测：节点到 GitHub 是间歇性抖动的，连探两次会得出相反结论并误报 ALERT
+  （2026-10-22 14:50 实测：同一节点 1 秒内一次可达一次不可达）
+- 修复 `guardian/guardian.sh` —— 3.6 换节点前先做 GitHub 可达性检查，跳过死节点，
+  不再把组切到死节点再回滚
+- 调整 `guardian/guardian.sh` —— `CLEAN_NODE` 从写死的单节点改为候选列表；
+  显式设置 `CLEAN_NODE` 环境变量仍可把它钉在候选首位
+
+### 部署
+
+- `scp guardian/guardian.sh root@10.0.0.1:/etc/ShellCrash/guardian.sh`，备份
+  `guardian.sh.bak-cleandyn-20261022`
+
+### 部署验证（2026-10-22）
+
+- HY2 四个节点全部超时（连 `gstatic/generate_204` 都失败）时，干净出口稳定停在
+  `🇹🇼 台湾-优化3`，guardian 连续多轮无 FIX / 无 ALERT
+- 手动把组切到 `🇮🇳 印度-优化` 后，下一轮自动切回台湾入口；不再出现
+  2.1→SG-HY2→2.3→台湾 的来回跳
+
+---
+
 ## [0.3.2] — 2026-10-22
 
 公共备用不再只当故障兜底：新增「大流量」通道，已知的大文件下载走公共池，

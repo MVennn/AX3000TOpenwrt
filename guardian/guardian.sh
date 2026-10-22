@@ -3,9 +3,9 @@
 # 网络守护 v3 —— 只做「检测 + 最小化修复」，绝不做破坏性操作
 #
 # 已知良好状态（2026-10-20 固化，依据实测）：
-#   - 🤖 干净出口 / 🤖 AI网页 = 🇮🇳 印度-优化（与订阅的 印度-备用m2 / 印度-备用ct2
-#     三选一，三者共用同一干净出口 IP <CLEAN-EXIT-IP>，Google 侧 cc 恒为 IN；
-#     切入口不换 IP、只换链路，所以会话不受影响）
+#   - 🤖 干净出口 / 🤖 AI网页 = CLEAN_CANDIDATES 里第一个可达的入口
+#     （2026-10-22 起不再写死单个节点：HY2 池优先，整池挂掉时退到台湾-优化3；
+#      入口之间共用同一干净出口 IP，切入口只换链路，所以会话不受影响）
 #   - 🤖 人工智能 = 🤖 AI网页
 #   - 所有 Google 家族域名规则指向 🤖 干净出口（一次性 Google 会话 = 一个出口 IP）
 #   - 🚀 节点选择 = ♻️ 自动选择
@@ -29,7 +29,15 @@ ALIVEF=/tmp/ShellCrash/.proxy_alive
 AI_GROUP="${AI_GROUP:-🤖 人工智能}"
 AI_WEB="${AI_WEB:-🤖 AI网页}"
 CL="${CLEAN_GROUP:-🤖 干净出口}"
-CLEAN_NODE="${CLEAN_NODE:-🇸🇬 新加坡SG-HY2}"
+# 干净出口候选：按优先级排列，全部是实测 cc≠CN/HK 的入口。
+# HY2 池优先（cc=SG）；HY2 整池挂掉时自动退到台湾-优化3（cc=TW）。
+# 不再写死单个 CLEAN_NODE —— 2026-10-22 实测 HY2 四个节点全挂，写死目标会让
+# 2.1「锁干净节点」把组切到死节点、2.3「存活守卫」再切走，每 5 分钟打一次。
+CLEAN_CANDIDATES="${CLEAN_NODE:+$CLEAN_NODE|}${CLEAN_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT}"
+CL_ALIVE_URL="${CL_ALIVE_URL:-https://github.com/}"
+CLEAN_CACHE=/tmp/ShellCrash/.clean_node
+CLEAN_VERDICT_FILE=/tmp/ShellCrash/.clean_verdict
+CLEAN_RETRY="${CLEAN_RETRY:-600}"
 POOL_GROUP="${POOL_GROUP:-🚀 节点选择}"
 POOL_FALLBACK_GROUP="${POOL_FALLBACK_GROUP:-♻️ 自动选择}"
 
@@ -48,7 +56,62 @@ enc() { echo "$1" | sed 's/ /%20/g'; }
 grp() { $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null | grep -oE '"now":"[^"]*"' | head -1 | sed 's/"now":"//;s/"$//'; }
 put() { $CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null; }
 
-# 被 Google 判为 CN 的节点（实测清单）。台湾-优化3 / 台湾-优化2-GPT 例外，见下方 CL_CANDIDATES。
+# 节点到 GitHub 的实链路探测：有 delay 字段就算可达。
+node_alive() {
+  $CURL -s -m 8 -H "$AUTH" "$CTRL/proxies/$(enc "$1")/delay?timeout=5000&url=$(echo "$CL_ALIVE_URL" | sed "s|:|%3A|g;s|/|%2F|g")" 2>/dev/null | grep -q '"delay"'
+}
+
+in_clean_list() {
+  _oldifs="$IFS"; IFS="|"
+  for _c in $CLEAN_CANDIDATES; do
+    if [ "$_c" = "$1" ]; then IFS="$_oldifs"; return 0; fi
+  done
+  IFS="$_oldifs"
+  return 1
+}
+
+# 解析本轮唯一的干净出口，全脚本只认这一个结果（2.1 / 2.3 / 3.6 共用），
+# 避免各段各自挑节点导致每 5 分钟互相切换。优先级：
+#   1) 当前入口在候选里且 GitHub 可达 → 保持不动（稳定优先，HY2 恢复也不主动切回）；
+#   2) 上次扫描已判定「全挂」且未到重试时间 → 不再重复扫，直接保持当前；
+#   3) 按候选顺序找第一个可达的；
+#   4) 全挂 → 返回当前入口，并把 verdict=0 写盘，由 2.3 告警。
+# 探测结论写到 CLEAN_VERDICT_FILE：1=有可达入口，0=全部不可达。2.3 直接复用，
+# 不再二次探测 —— 节点到 GitHub 是间歇性抖动的，连探两次会得出相反结论。
+resolve_clean_node() {
+  _cur=$(grp "$CL")
+  if [ -n "$_cur" ] && in_clean_list "$_cur" && node_alive "$_cur"; then
+    echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+    echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
+    echo "$_cur"
+    return
+  fi
+  if [ -f "$CLEAN_CACHE" ] && [ "$(cat "$CLEAN_VERDICT_FILE" 2>/dev/null)" = "0" ]; then
+    _ts=0; _node=""
+    read -r _ts _node < "$CLEAN_CACHE" 2>/dev/null
+    case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
+    if [ $(( $(date +%s) - _ts )) -lt "$CLEAN_RETRY" ]; then
+      echo "$_cur"
+      return
+    fi
+  fi
+  _oldifs="$IFS"; IFS="|"
+  for _cand in $CLEAN_CANDIDATES; do
+    if node_alive "$_cand"; then
+      IFS="$_oldifs"
+      echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+      echo "$(date +%s) $_cand" > "$CLEAN_CACHE" 2>/dev/null
+      echo "$_cand"
+      return
+    fi
+  done
+  IFS="$_oldifs"
+  echo 0 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+  echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
+  echo "$_cur"
+}
+
+# 被 Google 判为 CN 的节点（实测清单）。台湾-优化3 / 台湾-优化2-GPT 例外，见顶部 CLEAN_CANDIDATES。
 # 2026-10-22：机场的 vmess 池（xiaoyan/mobgslb 三条入口，含全部印度节点）全部判 cc=CN，
 #   新出现的 Hysteria2 池（*.mjhy2.com）实测 4 个节点全部 cc=SG —— 它们是干净出口。
 is_bad_node() {
@@ -138,17 +201,25 @@ if [ -n "$AI_NOW" ]; then
   fi
 fi
 
-# ---------- 2.1) AI网页 / 干净出口 锁到唯一干净节点 ----------
-for g in "$AI_WEB" "$CL"; do
-  NOW=$(grp "$g")
-  if [ -n "$NOW" ] && [ "$NOW" != "$CLEAN_NODE" ] && is_bad_node "$NOW"; then
-    if [ "$(put "$g" "$CLEAN_NODE")" = "204" ]; then
-      log "FIX: $g 从「$NOW」切到干净出口「$CLEAN_NODE」"
-    else
-      log "ERROR: $g 切到 $CLEAN_NODE 失败"
+# ---------- 2.1) AI网页 / 干净出口 锁到同一个干净节点 ----------
+# 目标节点每轮只解析一次（resolve_clean_node）：当前入口在候选里且可达就不动，
+# 否则按候选顺序找第一个可达的。判定条件是「判 CN 的坏节点 或 GitHub 不可达」，
+# 死节点也在这里被换掉，不再依赖 2.3 事后补救。
+CLEAN_NODE=$(resolve_clean_node)
+if [ -z "$CLEAN_NODE" ]; then
+  log "WARN: 无法解析干净出口（控制 API 无响应或候选全挂），本轮跳过 2.1/2.2"
+else
+  for g in "$AI_WEB" "$CL"; do
+    NOW=$(grp "$g")
+    if [ -n "$NOW" ] && [ "$NOW" != "$CLEAN_NODE" ] && { is_bad_node "$NOW" || ! node_alive "$NOW"; }; then
+      if [ "$(put "$g" "$CLEAN_NODE")" = "204" ]; then
+        log "FIX: $g 从「$NOW」切到干净出口「$CLEAN_NODE」"
+      else
+        log "ERROR: $g 切到 $CLEAN_NODE 失败"
+      fi
     fi
-  fi
-done
+  done
+fi
 
 # ---------- 2.2) AI网页组与干净出口必须用同一个入口 ----------
 # 两者是同一批印度节点，但组成员会各自漂移。三条入口共用同一出口 IP，
@@ -163,37 +234,15 @@ if [ -n "$CL_NOW" ] && [ -n "$AW_NOW" ] && [ "$CL_NOW" != "$AW_NOW" ]; then
   fi
 fi
 
-# ---------- 2.3) 干净出口节点存活守卫（CLEAN_EXIT_ALIVE）----------
-# Selector 不会自动换节点。入口域名被 GSLB 轮到死后端时（2026-10-22 实测
-# m2/ct2 的 CNAME 同时指到一个已失效的后端），GitHub 全族会在 TLS 握手阶段
-# 5 秒超时，而 Gemini 可能仍然打得开 —— 3.6 的吞吐探测抓不到这种情况。
-# 这里按 GitHub 实链路判定存活：当前入口拨号失败就按「HY2 优先」换到第一个
-# 存活入口。2026-10-22 起干净出口首选 Hysteria2 池（*.mjhy2.com，实测 cc=SG），
-# vmess 池（xiaoyan/mobgslb）整池被判 cc=CN，已从候选里剔除 —— 否则会和 2.1
-# 「锁到干净节点」互相切换（2.3 切到印度、2.1 又切回 HY2，每 5 分钟一次）。
-CL_ALIVE_CANDIDATES="${CL_ALIVE_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3}"
-CL_ALIVE_URL="${CL_ALIVE_URL:-https://github.com/}"
-node_alive() {
-  $CURL -s -m 8 -H "$AUTH" "$CTRL/proxies/$(enc "$1")/delay?timeout=5000&url=$(echo "$CL_ALIVE_URL" | sed "s|:|%3A|g;s|/|%2F|g")" 2>/dev/null | grep -q '"delay"'
-}
+# ---------- 2.3) 干净出口结果校验（CLEAN_EXIT_ALIVE）----------
+# 切换已在 2.1 完成（目标节点就是解析出的可达节点），这里只校验结果：
+# 如果最终入口仍不可达，说明候选全挂，必须显式告警。
+# 历史：入口域名被 GSLB 轮到死后端时，GitHub 全族会在 TLS 握手阶段 5 秒超时，
+# 而 Gemini 可能仍然打得开 —— 3.6 的吞吐探测抓不到这种情况，所以单独校验。
 CL_NOW=$(grp "$CL")
-if [ -n "$CL_NOW" ] && ! node_alive "$CL_NOW"; then
-  FOUND=""
-  OLDIFS="$IFS"; IFS="|"
-  for cand in $CL_ALIVE_CANDIDATES; do
-    [ "$cand" = "$CL_NOW" ] && continue
-    node_alive "$cand" || continue
-    FOUND="$cand"
-    if [ "$(put "$CL" "$cand")" = "204" ]; then
-      put "$AI_WEB" "$cand" >/dev/null 2>&1
-      log "FIX: 干净出口「$CL_NOW」GitHub 拨号失败，已切到存活入口「$cand」；AI网页组同步"
-    else
-      log "ERROR: 干净出口切到「$cand」失败（控制 API 拒绝）"
-    fi
-    break
-  done
-  IFS="$OLDIFS"
-  [ -z "$FOUND" ] && log "ALERT: 干净出口当前入口「$CL_NOW」GitHub 不可达，且候选入口全部不可达；GitHub/Gemini 可能打不开"
+CLEAN_OK=$(cat "$CLEAN_VERDICT_FILE" 2>/dev/null || echo 1)
+if [ -n "$CL_NOW" ] && [ "$CLEAN_OK" != "1" ]; then
+  log "ALERT: 干净出口候选入口全部不可达（当前入口「$CL_NOW」），GitHub/Gemini 可能打不开"
 fi
 
 # ---------- 3) 通用池：只有落在坏节点清单里才复位 ----------
@@ -239,7 +288,7 @@ fi
 # 30 个节点里只有台湾-优化3 / 台湾-优化2-GPT 能出 cc=TW；候选改为台湾优先、印度兜底。
 # 2026-10-22：上述 vmess 池 5 个候选全部判 cc=CN（含手机同款「新加坡-优化3」）；
 # 机场新给的 Hysteria2 池 4 个节点全部 cc=SG，故候选改为 HY2 优先。
-CL_CANDIDATES="${CL_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3}"
+# 候选统一用顶部的 CLEAN_CANDIDATES，和 2.1 共用同一份优先级，不再各自维护。
 CL_PROBE_URL="https://gemini.google.com/"
 
 clean_exit_ms() {
@@ -259,8 +308,9 @@ CUR_CL=$(grp "$CL")
 if [ -n "$CUR_CL" ] && clean_exit_bad; then
   FIXED=""
   OLDIFS="$IFS"; IFS="|"
-  for cand in $CL_CANDIDATES; do
+  for cand in $CLEAN_CANDIDATES; do
     [ "$cand" = "$CUR_CL" ] && continue
+    node_alive "$cand" || continue
     [ "$(put "$CL" "$cand")" = "204" ] || continue
     sleep 3
     if ! clean_exit_bad; then
@@ -270,6 +320,8 @@ if [ -n "$CUR_CL" ] && clean_exit_bad; then
   IFS="$OLDIFS"
   if [ -n "$FIXED" ]; then
     put "$AI_WEB" "$FIXED" >/dev/null 2>&1
+    echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+    echo "$(date +%s) $FIXED" > "$CLEAN_CACHE" 2>/dev/null
     log "FIX: 干净出口劣化（当前入口「$CUR_CL」），已换到「$FIXED」（同一出口 IP，不影响会话）；AI网页组同步"
   else
     [ "$CUR_CL" != "$(grp "$CL")" ] && put "$CL" "$CUR_CL" >/dev/null 2>&1
