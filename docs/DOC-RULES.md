@@ -18,8 +18,19 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 
 每篇文档开头必须有一个 **「一句话」引言块**（`> **一句话**：…`），
 让读者不用往下翻就知道这篇管什么。新文档没有它不算写完。
+（`tools/check-docs.py` 会拦；Release 说明例外 —— 它的第一行是加粗总结，
+见 [release-notes/README.md](release-notes/README.md)。）
 
 根 README 是面向用户的门面，不套用引言块规则。
+
+### 文件命名：全大写 + 连字符
+
+docs/ 下的文档一律 `ALL-CAPS-WITH-HYPHENS.md`（如 `TROUBLESHOOTING.md`、
+`BACKUP-VAULT.md`）—— 不用小写、不用下划线、不用中文文件名。
+例外只有两个：`README.md`（各目录的索引）与 `docs/release-notes/`
+下的版本说明（文件名 = `versionName`，如 `0.1.0.md`，**不带 `v`** ——
+`v` 前缀只属于发版 tag，见 [VERSIONING.md](VERSIONING.md) §3）。
+改名一律 `git mv`，并同步全部引用方（见 §4）。
 
 ---
 
@@ -95,6 +106,8 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 - 历史记录里的旧文件名可保留原样 —— 那是当时的事实；
   但**正文中指向现役文档的链接**必须始终指向现役文档。
 - **待补文档**暂时**不写成链接**，用反引号写成代码 + 一句「待补」说明 —— 不留死链。
+- **点验有脚本兜底**：`python tools/check-docs.py` 会查链接目标、锚点、引言块与孤儿
+  文档（见 §7）。改名后跑一次，比人工 grep 可靠。
 
 ---
 

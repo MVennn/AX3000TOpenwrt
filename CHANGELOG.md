@@ -30,6 +30,14 @@
   悬空引用从两条减为一条（只剩 `/etc/router-health/reboot-verify.sh`）；
 - 调整 `docs/DEPLOY.md` —— 仓库根文件数从「四个」更新为「六个」，补 `CONTRIBUTING.md` / `SECURITY.md`
 
+### 文档规范对齐（2026-10-22，对齐兄弟仓 GoldSunEnhance 的文档骨架）
+
+- 调整 `docs/release-notes/` —— 四份说明文件名去掉 `v` 前缀（`v0.1.0.md` → `0.1.0.md` 等，全部 `git mv`）；文件名 = `versionName`，`v` 前缀只属于发版 tag（tag 不动）
+- 调整 `docs/release-notes/README.md` —— 头部补「一句话」引言块；文件名规则改为 `versionName` 并加一句「不带 `v`」
+- 调整 `docs/README.md` —— 索引引言块与结尾提醒对齐基准仓；一句话定位压到一行读完；参考资料区补 `release-notes/` 目录行
+- 调整 `docs/VERSIONING.md` —— §2 判断口诀改为「翻能力清单找答案」+ 补边界情况行；§3 标注说明文件名不带 `v`；§5 改为「不发版的时候：不要动版本号」并补「提前进位会吃掉下一个版本号」
+- 调整 `docs/DOC-RULES.md` —— §1 补「文件命名：全大写 + 连字符」小节（含 release-notes 例外）；§4 补「点验有脚本兜底」
+
 ### 清理（2026-10-22 大扫除）
 
 - 清理 `tools/__pycache__/` —— 4 个 `.pyc`（约 60 KB），纯再生缓存，`.gitignore` 已排除

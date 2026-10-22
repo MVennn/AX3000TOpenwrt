@@ -1,9 +1,13 @@
 # release-notes/
 
-放**面向使用者**的 Release 说明，文件名 = 版本号：
+> **一句话**：面向使用者的 Release 说明放这里，文件名 = `versionName`；
+> 本篇只定格式（四动词、一行一条、覆盖率红线、固定尾巴），不承载变更内容。
+
+放**面向使用者**的 Release 说明，文件名 = `versionName`（如 `0.1.0.md`），
+**不带 `v`** —— `v` 前缀只属于发版 tag：
 
 ```
-docs/release-notes/v0.1.0.md
+docs/release-notes/0.1.0.md      # 对应的 tag 是 v0.1.0
 ```
 
 版本号与 [CHANGELOG.md](../../CHANGELOG.md) 头部一致；打 tag 时把 CHANGELOG 的
