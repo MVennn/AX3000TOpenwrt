@@ -31,10 +31,10 @@ ShellCrash 校验失败时**只打一行日志**（「自定义配置文件校�
 备份区是最大的消耗项 —— 策略见 [MAINTENANCE.md](MAINTENANCE.md)。
 
 **⑤ Windows 侧工具的路径依赖。**
-`recovery/local-tools/fix-router.sh` 与 `recover-run.ps1` 已改成**按脚本自身位置推导**
-（`$(dirname "$0")` / `Split-Path $PSScriptRoot -Parent`），仓搬到哪里都能跑。
-但 `recovery/local-tools/` 一族里 **`recover-gitbash.cmd` 仍硬编码绝对路径**
-`<仓库根>/recovery` —— **仓一搬家就断**；
+`recovery/local-tools/fix-router.sh`、`recover-run.ps1` 与 `recover-gitbash.cmd`
+都已改成**按脚本自身位置推导**
+（`$(dirname "$0")` / `Split-Path $PSScriptRoot -Parent` / `%~dp0..\..`），仓搬到哪里都能跑。
+但 `recover-gitbash.cmd` 仍假定 Git 装在 `C:\Program Files\Git\`；
 它还依赖**仓外**的 `%TEMP%\owrt\rsh.sh`（SSH 辅助脚本，不在本仓）。
 另外 `fix-router.sh` 里的 SSID 默认值是占位符 `YOUR_ROUTER_SSID`，速查表用的是 `<YOUR-SSID>` ——
 两者都是占位符，运行时必须用环境变量指定真实值。

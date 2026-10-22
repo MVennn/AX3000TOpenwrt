@@ -39,7 +39,7 @@
 
 | 位置 | 一句话定位 |
 |---|---|
-| [release-notes/v0.3.1.md](release-notes/v0.3.1.md) | 本版 Release 说明（面向使用者：候选列表去掉会打架的节点） |
+| [release-notes/v0.3.1.md](release-notes/v0.3.1.md) | 最近一份 Release 说明（面向使用者：候选列表去掉会打架的节点；`v0.4.0` 尚未单独撰写） |
 | [release-notes/v0.3.0.md](release-notes/v0.3.0.md) | 上一版 Release 说明（面向使用者：干净出口改走 HY2 池） |
 | [release-notes/v0.2.0.md](release-notes/v0.2.0.md) | 上一版 Release 说明（面向使用者：干净出口自动切换、内存闸门） |
 | [release-notes/v0.1.0.md](release-notes/v0.1.0.md) | 首版 Release 说明（面向使用者：你现在能拿到什么） |

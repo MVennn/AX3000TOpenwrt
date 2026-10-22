@@ -18,6 +18,16 @@
 - 新增 `CONTRIBUTING.md` —— 提 Issue / PR 的入口、提交前自检命令与硬规矩索引
 - 新增 `SECURITY.md` —— 私密报告渠道、支持版本、脚本会改的设备状态与安全边界
 
+### 清理（2026-10-22 大扫除）
+
+- 清理 `tools/__pycache__/` —— 4 个 `.pyc`（约 60 KB），纯再生缓存，`.gitignore` 已排除
+- 清理 `.work/gh-refresh.log` —— 一次性 GitHub 设备授权日志（157 B），非证据、非游标
+- 调整 `docs/VERSIONING.md` §4 —— 当前版本从 0.2.0 对齐到 0.4.0；注明 v0.4.0 的 Release 说明与 tag 尚未创建
+- 调整 `docs/README.md` —— release-notes 索引把 v0.3.1 标为「最近一份」，注明 v0.4.0 尚未单独撰写
+- 调整 `docs/release-notes/README.md` —— 补「反馈入口」规则：第一行加粗总结，第二行绝对地址 `issues/new/choose`，然后才是 `## 本版内容`
+- 修复 `docs/PITFALLS.md` §⑤ —— `recover-gitbash.cmd` 实际已按 `%~dp0..\..` 推导仓库根，删掉「仍硬编码绝对路径」的过期说法
+- 仓库体积 29M → 29M（`tools/__pycache__` 61 KB + `.work/gh-refresh.log` 157 B 已删；`.work/` 19M 与 `vault/` 8.8M 按红线保留）
+
 ## [0.4.0] — 2026-10-22
 
 干净出口不再写死单个节点：HY2 池整池挂掉时自动退到台湾入口，消除 2.1 与 2.3
