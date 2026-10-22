@@ -1,0 +1,19 @@
+# 禁止 LAN 内设备把路由器的 mixed-port(7890, 无鉴权) 当匿名代理用。
+# 背景: mihomo 的 mixed-port 是 int 类型, 不能写成 host:port; 而全局 bind-address 会把
+#       redir-port(7892, 透明代理的落点) 一起绑到 loopback, 导致透明代理直接断。
+#       因此改在 input 链上按源网段拦截。
+# 影响面: 仅 LAN -> 7890 被拒。
+#   - 路由器自身脚本一直用 127.0.0.1:7890, 源地址是 127.0.0.1, 不匹配下面网段, 不受影响;
+#   - 透明代理走 redir-port 7892 (nft redirect 到本地), 与本表无关;
+#   - 控制面板 9999 / DNS 1053 都不在本表范围内, 保持原样。
+# 优先级 -200: 早于 shellcrash 自己的 input 链(-100), 否则 LAN 源地址会被它先 accept 掉。
+#
+# IPv6 按入接口匹配，不写运营商 PD 前缀 —— 前缀变化（重拨 / 换局向）后规则不会失效，
+# 也不要求客户端一定使用 ULA / link-local 源地址。`br-lan` 换成自己的 LAN 接口名。
+table inet mixedport {
+	chain input {
+		type filter hook input priority -200; policy accept;
+		ip saddr 10.0.0.0/24 tcp dport 7890 counter reject
+		iifname "br-lan" meta nfproto ipv6 tcp dport 7890 counter reject
+	}
+}

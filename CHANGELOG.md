@@ -18,6 +18,18 @@
 - 新增 `CONTRIBUTING.md` —— 提 Issue / PR 的入口、提交前自检命令与硬规矩索引
 - 新增 `SECURITY.md` —— 私密报告渠道、支持版本、脚本会改的设备状态与安全边界
 
+### 新增
+
+- 新增 `system/mixedport.nft` —— 把设备上已生效的 7890 收口 nft 表纳入版本库：
+  `input priority -200` 拦 LAN → 7890（IPv4 按网段、IPv6 按 `br-lan` 入接口），
+  路由器自身与透明代理不受影响；`system/rc.local` 开机会 `nft -f /etc/mixedport.nft`
+
+### 调整
+
+- 调整 `docs/DEPLOY.md` / `docs/TROUBLESHOOTING.md` —— 部署映射表补 `/etc/mixedport.nft`；
+  悬空引用从两条减为一条（只剩 `/etc/router-health/reboot-verify.sh`）；
+- 调整 `docs/DEPLOY.md` —— 仓库根文件数从「四个」更新为「六个」，补 `CONTRIBUTING.md` / `SECURITY.md`
+
 ### 清理（2026-10-22 大扫除）
 
 - 清理 `tools/__pycache__/` —— 4 个 `.pyc`（约 60 KB），纯再生缓存，`.gitignore` 已排除

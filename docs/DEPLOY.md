@@ -15,8 +15,9 @@
 | `third-party/` | 上游项目索引（本仓不 vendor 源码） |
 | `vault/`（[BACKUP-VAULT.md](BACKUP-VAULT.md)） | **私有金库**：私钥备份、升级前整机快照、argon 主题恢复包 —— **在仓里但不入库**（`.gitignore` 排除 + CI 守卫兜底） |
 
-仓库根还有四个文件：`README.md`（门面）、`CHANGELOG.md`（变更台账）、
-`LICENSE`（MIT 许可证全文）、`NOTICE`（第三方声明）。
+仓库根还有六个文件：`README.md`（门面）、`CHANGELOG.md`（变更台账）、
+`LICENSE`（MIT 许可证全文）、`NOTICE`（第三方声明）、`CONTRIBUTING.md`（贡献流程）、
+`SECURITY.md`（安全边界与私密报告渠道）。
 
 ## 本仓管哪几件事
 
@@ -33,6 +34,7 @@
 | 本地路径 | 路由器上的目标路径 | 被谁调用 | 回退方式 |
 |---|---|---|---|
 | `system/rc.local` | `/etc/rc.local` | 开机（procd 执行） | 改前 cp 一份到 `/root/backup/<对象>-<动作>-<YYYYMMDD>/rc.local`；或用 `system/archive/bootfix.sh` 留下的 `/root/backup/pre-bootfix-<时间戳>/rc.local` 还原 |
+| `system/mixedport.nft` | `/etc/mixedport.nft` | 开机（`rc.local` 执行 `nft -f`） | 从 `/etc/mixedport.nft.bak-*` 还原；缺失时 LAN 可直连 7890（见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)） |
 | `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 从 `/root/backup/` 下同名备份还原；**停用**：见[「启用与停用守护」](#启用与停用守护) |
 | `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 从 `/root/backup/` 下同名备份还原；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
 | `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
@@ -80,11 +82,10 @@ echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/cr
 sed -i '/bulk-guard/d' /etc/crontabs/root && /etc/init.d/cron restart
 ```
 
-## 两个悬空引用（`rc.local` 引用、但文件不在本仓，在路由器上）
+## 一个悬空引用（`rc.local` 引用、但文件不在本仓，在路由器上）
 
 | 被引用 | 被谁引用 | 本仓状态 |
 |---|---|---|
-| `/etc/mixedport.nft` | `rc.local` | **待补**：这是 7890 收口的 nft 表（见 [OPERATIONS.md](OPERATIONS.md) 的残留风险表），文件在设备上、未入版本库 |
 | `/etc/router-health/reboot-verify.sh` | `rc.local` | **待补**：开机后自动验收分发器，文件在设备上、未入版本库 |
 
 ## 通用版在哪

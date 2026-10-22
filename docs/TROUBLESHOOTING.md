@@ -314,10 +314,10 @@ grep -n 'nft -f' /etc/rc.local
 
 | 观察到的现象 | 原因 | 解法 |
 |---|---|---|
-| 表缺失、`/etc/<name>.nft` 也在 | 文件没入版本库或被删 | 本仓 `system/rc.local` 引用了 `/etc/mixedport.nft` 与 `/etc/router-health/reboot-verify.sh`，**这两个文件不在本仓**（在设备上、未入版本库）—— **待补**。文件补齐前，只能手工 `nft -f` |
+| 表缺失、`/etc/<name>.nft` 也在 | 文件没入版本库或被删 | `system/mixedport.nft` 已入本仓，按部署映射表投放；`/etc/router-health/reboot-verify.sh` 仍不在本仓（在设备上）—— **待补**。缺失时手工 `nft -f /etc/<name>.nft` |
 | 表缺失、源文件在 | 开机加载顺序没走到（`googleroute` 要等 DNS 1053 就绪才加载） | 手工 `nft -f /etc/<name>.nft`；守护每 5 分钟补载三张表（`mixedport` **不在守护的补载清单里**） |
 | 表在、计数器不涨 | 规则没命中（如流量走的不是被拦的网段） | 看 `nft list table inet <name>` 里的 counter 与网段 |
-| `mixedport` 缺失 → 7890 又能被 LAN 连上 | 这张表是 **7890 收口**的实现，丢了就等于开放代理复活 | `nft -f /etc/mixedport.nft`；长期方案是把该文件纳入本仓并进 `rc.local` 的开机加载 |
+| `mixedport` 缺失 → 7890 又能被 LAN 连上 | 这张表是 **7890 收口**的实现，丢了就等于开放代理复活 | `nft -f /etc/mixedport.nft`；源文件已入本仓 `system/mixedport.nft`，`rc.local` 开机会加载 |
 
 **顺序很重要**：`inet googleroute` 用 **dstnat-4**（早于 shellcrash 的 dstnat-100），
 `inet mixedport` 用 **input priority -200**（早于 shellcrash 的 -100，
