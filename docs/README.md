@@ -40,7 +40,8 @@
 | 位置 | 一句话定位 |
 |---|---|
 | [release-notes/](release-notes/README.md) | 面向使用者的 Release 说明，文件名 = `versionName`（不带 `v`，见格式正本） |
-| [release-notes/0.3.1.md](release-notes/0.3.1.md) | 最近一份 Release 说明：候选列表去掉会打架的节点（`0.4.0` 尚未单独撰写） |
+| [release-notes/0.4.0.md](release-notes/0.4.0.md) | 最近一份 Release 说明：干净出口运行时解析、站点健康守卫与 7890 收口 |
+| [release-notes/0.3.1.md](release-notes/0.3.1.md) | 上一版 Release 说明：候选列表去掉会打架的节点 |
 | [release-notes/0.3.0.md](release-notes/0.3.0.md) | 上一版 Release 说明：干净出口改走 HY2 池 |
 | [release-notes/0.2.0.md](release-notes/0.2.0.md) | 上一版 Release 说明：干净出口自动切换与内存闸门 |
 | [release-notes/0.1.0.md](release-notes/0.1.0.md) | 首版 Release 说明：你现在能拿到什么 |
