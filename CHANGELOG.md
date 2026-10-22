@@ -9,6 +9,29 @@
 
 ---
 
+## [0.3.2] — 2026-10-22
+
+公共备用不再只当故障兜底：新增「大流量」通道，已知的大文件下载走公共池，
+实测跑不满时自动切回机场。
+
+### 部署
+
+- 部署 `OpenwrtOpsToolkit/openwrt/bulk-guard.sh` → `/etc/ShellCrash/bulk-guard.sh`，cron `*/10 * * * *`
+- 新建 `/etc/openwrt-ops/device.conf` —— `BULK_GROUP="📺 大流量"` / `BULK_PUBLIC="🆓 公共备用"` / `BULK_AIRPORT="♻️ 自动选择"`（文件不入库）
+- 策略组与规则由 `ShellcrashRules` 侧下发；本仓只记录设备侧部署
+
+### 文档
+
+- 调整 `docs/DEPLOY.md` —— 部署映射表加入 `bulk-guard.sh` 与 `device.conf`；「启用与停用守护」补守卫的停用命令
+
+### 部署验证（2026-10-22）
+
+- `sh bulk-guard.sh --status` 能读到三个组名；`proof.ovh.net` 的 `/connections` 链路为
+  `📺 大流量 → 🆓 公共备用 → 🆓 公共-01`
+- 强制阈值触发：切到 `♻️ 自动选择` 并写入 1 小时冷却；冷却清零后自动切回公共池并首测 1356 KB/s
+
+---
+
 ## [0.3.1] — 2026-10-22
 
 补掉干净出口候选里的两个坑：印度节点已判 CN、香港 HY2 不在组内。

@@ -36,6 +36,8 @@
 | `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 从 `/root/backup/` 下同名备份还原；**停用**：见[「启用与停用守护」](#启用与停用守护) |
 | `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 从 `/root/backup/` 下同名备份还原；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
 | `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
+| `bulk-guard.sh`（**不在本仓**，来自 `OpenwrtOpsToolkit/openwrt/`） | `/etc/ShellCrash/bulk-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；组名从 `/etc/openwrt-ops/device.conf` 读 | 删 cron 行 + 删文件；已切过的组在面板里手动选回 |
+| `/etc/openwrt-ops/device.conf`（设备侧新建，不入库） | 同左 | `bulk-guard.sh` 读取 `BULK_GROUP` / `BULK_PUBLIC` / `BULK_AIRPORT` | 删文件 → 脚本报「未配置」并跳过（不改任何组） |
 | `recovery/recover-now.sh` | `/tmp/recover-now.sh`（临时，用完即弃） | 人工，或 `recovery/local-tools/recover-run.cmd` | 脚本自带回滚：改前把 `fake_ip_filter` 备份到 `/root/fake_ip_filter.bak.<时间戳>`，crontab 备份到 `/tmp/cron.recover.bak` |
 | `recovery/local-tools/recover-run.cmd` | 不上设备 | 人双击 | 无需回退 |
 | `recovery/local-tools/recover-run.ps1` | 不上设备 | `recover-run.cmd` | 无需回退 |
@@ -70,6 +72,13 @@ echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/cr
 
 停守护后若代理仍被拉起，看 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)「crontab 被覆盖」一节 ——
 守护只在 `/tmp/ShellCrash/shellcrash.pid` 存在时拉起进程。
+
+**大流量守卫（`bulk-guard.sh`）要一起停**：它会在空闲时切策略组，维护期间
+（改配置 / 重启 ShellCrash）切组没有意义，还可能把面板里的选择改掉：
+
+```sh
+sed -i '/bulk-guard/d' /etc/crontabs/root && /etc/init.d/cron restart
+```
 
 ## 两个悬空引用（`rc.local` 引用、但文件不在本仓，在路由器上）
 
