@@ -49,13 +49,15 @@ Make the Router Boring Again.
    ash /tmp/recover-now.sh           # 完整修复
    ```
 
-4. 把守护脚本装上并挂进 crontab，每 5 分钟一轮：
+4. 把守护脚本装上并挂进 crontab（`guardian` 每 5 分钟；`dest-guard` 每 10 分钟，默认 dry-run）：
 
    ```sh
    R=root@"$ROUTER_IP"
    scp guardian/guardian.sh "$R":/etc/ShellCrash/guardian.sh
-   ssh "$R" 'chmod +x /etc/ShellCrash/guardian.sh'
-   ssh "$R" 'echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/crontabs/root && /etc/init.d/cron restart'
+   scp guardian/dest-guard.sh "$R":/etc/ShellCrash/dest-guard.sh
+   ssh "$R" 'chmod +x /etc/ShellCrash/guardian.sh /etc/ShellCrash/dest-guard.sh'
+   ssh "$R" 'echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/crontabs/root'
+   ssh "$R" 'echo "*/10 * * * * /bin/ash /etc/ShellCrash/dest-guard.sh #站点健康守卫(dry-run)" >> /etc/crontabs/root && /etc/init.d/cron restart'
    ```
 
 5. 维护或升级前先停守护，否则守护会把代理复活、妨碍升级（命令见 [docs/DEPLOY.md](docs/DEPLOY.md)）。
@@ -67,7 +69,7 @@ Make the Router Boring Again.
 ## 目录
 
 ```
-guardian/       网络守护（检测 + 最小化修复）
+guardian/       网络守护（检测 + 最小化修复；含站点健康守卫 dest-guard）
 recovery/       故障恢复脚本与 Windows 侧触发器
 system/         开机脚本（rc.local）与已归档的一次性脚本
 baseline/       sysupgrade 保留清单与无线配置模板

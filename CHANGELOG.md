@@ -20,6 +20,7 @@
 
 ### 新增
 
+- 新增 `guardian/dest-guard.sh` —— 按「站点 → 策略组」探测真实可达性（X / GitHub / B站 / YouTube / 通用），默认 dry-run 只写日志；启用后只在 B站候选白名单内切换、30 分钟冷却，不碰全局选择器
 - 新增 `system/mixedport.nft` —— 把设备上已生效的 7890 收口 nft 表纳入版本库：
   `input priority -200` 拦 LAN → 7890（IPv4 按网段、IPv6 按 `br-lan` 入接口），
   路由器自身与透明代理不受影响；`system/rc.local` 开机会 `nft -f /etc/mixedport.nft`

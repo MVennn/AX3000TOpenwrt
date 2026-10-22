@@ -101,6 +101,7 @@ sh /etc/ShellCrash/routing-test.sh
 # 5) 定时任务与守护日志
 cat /etc/crontabs/root
 tail -20 /tmp/ShellCrash/guardian.log
+tail -20 /tmp/ShellCrash/dest-guard.log
 tail -20 /etc/ShellCrash/logs/auto-update.log
 ```
 
@@ -125,7 +126,24 @@ sh /etc/router-health/reboot-verify.sh status
 | nft 表补载 | quicguard / googlecn / googleroute 任一缺失 | 从 `/etc/*.nft` 重新加载 |
 
 另有 **1 分钟看门狗**（进程不在就拉起，且不会误杀已健康运行的代理）、
-**10 分钟面板选择保存**、**30 分钟健康快照**、**每周订阅与规则自动更新**。
+**10 分钟站点健康守卫（dry-run）**、**10 分钟面板选择保存**、
+**30 分钟健康快照**、**每周订阅与规则自动更新**。
+
+### 站点健康守卫在做什么（每 10 分钟，默认 dry-run）
+
+`dest-guard.sh` 按「站点 → 策略组」用真实 URL 探测，只处理站点族自己的出口：
+
+| 站点 | 组 | 探测 URL | 动作 |
+|---|---|---|---|
+| X / Twitter | `𝕏 媒体` | `pbs.twimg.com/robots.txt` | 只记录（url-test 自愈） |
+| GitHub | `🔗 GitHub 出口` | `github.com/robots.txt` | 只记录（url-test 自愈） |
+| B站 | `🎬 B站解锁` | `api.bilibili.com/x/web-interface/zone` | 当前出口失败时在候选白名单内切换，30 分钟冷却 |
+| YouTube | `🤖 干净出口` | `www.youtube.com/` | 只记录（guardian 管理） |
+| 通用 | `🚀 节点选择` | `www.cloudflare.com/cdn-cgi/trace` | 只记录（guardian 管理） |
+
+**默认 dry-run**：只写 `/tmp/ShellCrash/dest-guard.log`，不切任何组；每项探两次取较小值，
+避免单次抖动误判。观察一周确认判断与体感一致后，在 cron 行前加
+`DEST_GUARD_DRY_RUN=0` 再启用切换。
 
 ---
 

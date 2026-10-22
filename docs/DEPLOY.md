@@ -7,7 +7,7 @@
 | 目录 | 职责 |
 |---|---|
 | `system/` | 路由器系统面：开机脚本 `rc.local`、已执行的一次性补丁与核心升级脚本（`archive/`） |
-| `guardian/` | 网络守护进程：检测 + 最小化修复，每 5 分钟一轮；含 OOM 拉起前的内存闸门 `memgate.sh` |
+| `guardian/` | 网络守护进程：检测 + 最小化修复，每 5 分钟一轮；含 OOM 拉起前的内存闸门 `memgate.sh`，以及按站点探测的 `dest-guard.sh`（每 10 分钟，默认 dry-run） |
 | `recovery/` | 故障恢复：`recover-now.sh` 主力、Windows 侧触发器（`local-tools/`）、已被取代的旧版（`archive/`） |
 | `docs/` | 文档：索引、规则正本、硬件基线、状态速查、排障手册、Release 说明 |
 | `baseline/` | `sysupgrade` 保留清单与无线配置模板（示例值） |
@@ -25,6 +25,7 @@
 |---|---|---|
 | **网络守护** | [`guardian/guardian.sh`](../guardian/guardian.sh) | 代理进程存活、nft 表补载、策略组出口复原、ShellCrash「静默回退」自愈、`/tmp` 内存盘水位、OOM 拉起前内存闸门；每 5 分钟一轮，只做「检测 + 最小化修复」 |
 | **开机自启与运行时目录兜底** | [`system/rc.local`](../system/rc.local) | tmpfs 上的 `/tmp/ShellCrash` 重建、`/var` 软链目标目录重建、四张自建 nft 表开机加载、开机后自动验收派发 |
+| **站点健康守卫** | [`guardian/dest-guard.sh`](../guardian/dest-guard.sh) | 按「站点 → 策略组」用真实 URL 探测（X / GitHub / B站 / YouTube / 通用）；默认 dry-run 只写日志，启用后在候选白名单内切换（30 分钟冷却），不碰全局选择器 |
 | **故障恢复** | [`recovery/recover-now.sh`](../recovery/recover-now.sh) | 「WiFi 连上了但没网」「DNS 解析全失败」「代理离线」的成套恢复；`check` 参数只诊断、不改任何东西 |
 | **一次性补丁与核心升级** | [`system/archive/`](../system/archive/) · [`recovery/archive/`](../recovery/archive/) | 已执行完毕、留档可复用，各自带回滚（见下表的「回退方式」列） |
 | **Windows 侧触发器** | [`recovery/local-tools/`](../recovery/local-tools/) | 双击就能把恢复脚本推到路由器上跑；口令由 `askpass.sh` 从环境变量取，自身不含口令 |
@@ -38,6 +39,7 @@
 | `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 从 `/root/backup/` 下同名备份还原；**停用**：见[「启用与停用守护」](#启用与停用守护) |
 | `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 从 `/root/backup/` 下同名备份还原；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
 | `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
+| `guardian/dest-guard.sh` | `/etc/ShellCrash/dest-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；**默认 dry-run**，只写 `/tmp/ShellCrash/dest-guard.log` | 删 cron 行 + 删文件；已切换过的组在面板里手动选回 |
 | `bulk-guard.sh`（**不在本仓**，来自 `OpenwrtOpsToolkit/openwrt/`） | `/etc/ShellCrash/bulk-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；组名从 `/etc/openwrt-ops/device.conf` 读 | 删 cron 行 + 删文件；已切过的组在面板里手动选回 |
 | `/etc/openwrt-ops/device.conf`（设备侧新建，不入库） | 同左 | `bulk-guard.sh` 读取 `BULK_GROUP` / `BULK_PUBLIC` / `BULK_AIRPORT` | 删文件 → 脚本报「未配置」并跳过（不改任何组） |
 | `recovery/recover-now.sh` | `/tmp/recover-now.sh`（临时，用完即弃） | 人工，或 `recovery/local-tools/recover-run.cmd` | 脚本自带回滚：改前把 `fake_ip_filter` 备份到 `/root/fake_ip_filter.bak.<时间戳>`，crontab 备份到 `/tmp/cron.recover.bak` |
@@ -80,6 +82,14 @@ echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/cr
 
 ```sh
 sed -i '/bulk-guard/d' /etc/crontabs/root && /etc/init.d/cron restart
+```
+
+**站点健康守卫（`dest-guard.sh`）默认是 dry-run**：只写日志、不切组，可以和 guardian
+一起常驻。先看 `/tmp/ShellCrash/dest-guard.log` 跑一周，确认它的判断与体感一致，再把
+cron 行改成带 `DEST_GUARD_DRY_RUN=0` 的形式启用切换：
+
+```sh
+*/10 * * * * DEST_GUARD_DRY_RUN=0 /bin/ash /etc/ShellCrash/dest-guard.sh #站点健康守卫
 ```
 
 ## 一个悬空引用（`rc.local` 引用、但文件不在本仓，在路由器上）
