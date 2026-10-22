@@ -1,0 +1,93 @@
+name: 问题反馈（Bug）
+description: 守护脚本失灵、恢复脚本报错、开机不生效、路由器状态异常
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量把下面的信息填全，尤其是**脚本路径与日志**——
+        没有日志和调用方式的问题，很难判断是脚本没跑到还是判断错了。
+
+        反馈前先按现象查一遍 [docs/TROUBLESHOOTING.md](https://github.com/MVennn/AX3000TOpenwrt/blob/main/docs/TROUBLESHOOTING.md)。
+
+  - type: checkboxes
+    id: acknowledgment
+    attributes:
+      label: 反馈前确认
+      options:
+        - label: 我已知悉本仓脚本会直接修改路由器系统状态（重启服务、重载防火墙、改 crontab、改 mihomo 策略组），并已备份关键配置。
+          required: true
+        - label: 我已知悉本仓的结论只在特定固件、订阅与时间点验证过，换环境后需要重新验证；相关风险由我自行承担。
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 出了什么问题
+      description: |
+        现象 + 复现步骤：在哪个环节、执行了什么、预期是什么、实际看到什么。
+        能稳定复现就写步骤，时有时无就写出现频率。
+      placeholder: |
+        例：
+        1. 路由器重启后等待 10 分钟
+        2. 执行 crontab -l，确认 guardian 已挂上
+        3. 预期：代理自动恢复；实际：guardian.log 里连续报「找不到策略组」
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 设备与固件版本
+      description: 在路由器上执行 `cat /etc/openwrt_release`，把 DESCRIPTION 与 VERSION 贴在这里
+      placeholder: "例：Xiaomi AX3000T / OpenWrt 25.12.6"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 出问题的是哪一块
+      options:
+        - guardian（网络守护 / cron）
+        - recovery（故障恢复 / recover-now.sh）
+        - system（开机脚本 / rc.local）
+        - baseline（sysupgrade 保留清单 / 无线模板）
+        - 文档或其它
+    validations:
+      required: true
+
+  - type: input
+    id: script
+    attributes:
+      label: 涉及的脚本与调用方式
+      description: 写清仓库内路径，以及是手动执行、cron 还是开机触发
+      placeholder: "例：guardian/guardian.sh，cron 每 5 分钟执行一次"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: |
+        在路由器上执行下面的命令，把输出整段贴进来（贴之前确认没有真实 SSID、IP、节点名）：
+
+        ```
+        tail -50 /tmp/ShellCrash/guardian.log
+        tail -50 /root/recover-last.log
+        logread | tail -50
+        ```
+
+        没法抓日志的话，说明一下原因。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或补充信息（可选）
+      description: 系统状态页、crontab 内容、nft 规则等；敏感值先替换成占位符
+    validations:
+      required: false

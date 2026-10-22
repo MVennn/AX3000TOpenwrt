@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 排错手册
+    url: https://github.com/MVennn/AX3000TOpenwrt/blob/main/docs/TROUBLESHOOTING.md
+    about: 先按现象查一遍，八个高频现象都给了能直接粘的命令。
+  - name: 运维速查与踩坑
+    url: https://github.com/MVennn/AX3000TOpenwrt/blob/main/docs/OPERATIONS.md
+    about: 当前配置、访问入口、自检命令与机制红线。
