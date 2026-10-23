@@ -11,6 +11,26 @@
 
 ## [未发布] — 2026-10-24
 
+### 干净出口韩国节点治理（2026-10-24）
+
+- 修复 `guardian/guardian.sh` —— `CLEAN_CANDIDATES` 剔除 `🇰🇷 韩国KR-HY2`：
+  韩国法律对成人内容强制年龄验证，Google 按出口 IP 国家执行，落在韩国 =
+  搜成人词弹「19 岁验证」且只认韩国手机号，无解（2026-10-23 用户报告）
+- 新增 `is_kr_node()` 并加进 2.1 段扳走条件 —— `is_bad_node` 豁免全部
+  `-HY2` 节点，韩国 HY2 要单独拦，否则已落韩国的组永远不会被扳走
+- `resolve_clean_node()` 增加**组内成员校验**（候选 `grep -Fxq` 组的 `all`
+  列表）—— delay API 对组外节点也能测通，但 PUT 只接受组内成员；此前
+  「台湾-优化2-GPT」可达却在组外，解析成它后每轮 `ERROR` 切换失败
+  （根因与规避见 [docs/PITFALLS.md](docs/PITFALLS.md) ⑪⑫）
+- 候选兜底调整为 `印度-优化`（实测 cc=IN）；剔除同样组外的
+  `台湾-优化2-GPT`；同晚实测新加坡-优化系（-GPT / 2-GPT / 优化3）全部
+  cc=CN 不可用，HY2 池（新加坡/日本）对 Google 间歇超时 —— 恢复后
+  仍按候选顺序优先切回
+- 验证 —— `sh -n` ✓（本机与路由器）；实跑一轮 `🤖 干净出口` / `🤖 AI网页`
+  / `🤖 人工智能` 全部落 `印度-优化`，`support.google.com` 实测 cc=IN，
+  Google 搜索成人词 HTTP 200、无 ageverify 跳转；后续 cron 轮安静（verdict=1）
+- 部署 —— 已同步 `/etc/ShellCrash/guardian.sh`
+
 ### `/tmp` 自动回收（2026-10-23）
 
 - 新增 `system/router-health/tmp-watch.sh` + `tmp-watch.conf` 入库 —— 原先只存在于设备上。
