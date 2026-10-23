@@ -193,8 +193,8 @@ cat /proc/swaps; ls /dev/zram* 2>/dev/null
 
 | 观察到的现象 | 原因 | 解法 |
 |---|---|---|
-| `dmesg` 有 `Out of memory: Killed process ... CrashCore` | 内存峰值超限，**只杀核心，不重启整机**（`vm.panic_on_oom=0`，PID1 被内核豁免） | 查 `/tmp` 是不是被写满（见下）；`command.env` 加 `export GOMEMLIMIT=64MiB`（**已验证可传导**，待执行） |
-| `/tmp` 用量冲到 90%+ | `/tmp` 是 tmpfs（无 `size=` → 上限 ≈ RAM/2 = 119 MB），**直接吃 RAM**。最典型的场景：更新 mihomo 核心时 `gunzip` 把 **57 MB** 裸二进制灌进 `/tmp`（加上下载的 .gz 21 MB，峰值 ≈ 78 MB） | `sh /etc/ShellCrash/start.sh stop`；删掉 `/tmp` 下的大文件（**只删具体文件名**）；守护每 5 分钟看水位，≥80% 会自动清 |
+| `dmesg` 有 `Out of memory: Killed process ... CrashCore` | 内存峰值超限，**只杀核心，不重启整机**（`vm.panic_on_oom=0`，PID1 被内核豁免） | 查 `/tmp` 是不是被写满（见下）；`command.env` 里的 `export GOMEMLIMIT=64MiB` **已生效**（2026-10-23 核实 `/proc/$(pidof CrashCore)/environ`） |
+| `/tmp` 用量冲到 90%+ | `/tmp` 是 tmpfs，已由 `/etc/init.d/tmpfs-cap` 封顶 **48 MiB**（**不是** RAM/2），**直接吃 RAM** 且无 swap 不可回收。最典型的场景：更新 mihomo 核心时 `gunzip` 把 **57 MB** 裸二进制灌进 `/tmp`（加上下载的 .gz 21 MB，峰值 ≈ 78 MB —— 已超过封顶，会 `ENOSPC`） | `sh /etc/ShellCrash/start.sh stop`；删掉 `/tmp` 下的大文件（**只删具体文件名**）；`tmp-watch.sh` 每 5 分钟看水位并回收白名单内的陈旧文件（边界见 [MAINTENANCE.md](MAINTENANCE.md) §6.2） |
 | `VmSize` 1.39 GB 但 `VmRSS` 只有 68 MB | Go 的 `PROT_NONE` 保留区，**物理占用为 0**，不是泄漏 | 不用管；判断泄漏看 `VmRSS` 的**趋势**（10 分钟净变化） |
 | `Slab` 很大、`Cached` 很大 | 大部分是**可回收**的 | 不用管 |
 
@@ -251,7 +251,7 @@ ShellCrash 生成配置失败，日志里出现 `ENOSPC` / `No space left on dev
 ### 排查步骤
 
 ```sh
-# 1) /tmp 水位（tmpfs 无 size=，上限 ≈ RAM/2）
+# 1) /tmp 水位（tmpfs 由 tmpfs-cap 封顶 48 MiB）
 df -h /tmp; df -k /tmp
 
 # 2) 谁把 /tmp 撑大了（按大小排序，前 20）
@@ -269,7 +269,7 @@ head -3 /tmp/ShellCrash/error.yaml 2>/dev/null
 
 | 观察到的现象 | 原因 | 解法 |
 |---|---|---|
-| `/tmp` 里躺着几十 MB 的 `.gz` 或裸二进制 | 更新 mihomo 核心时 `gunzip -c > $TMPDIR/core_new` —— **57.4 MB 裸二进制 + 21 MB 的 .gz 一次性进内存盘** | 删掉这些具体文件（守护的水位清理清单里就有它们）；重启后再更新 |
+| `/tmp` 里躺着几十 MB 的 `.gz` 或裸二进制 | 更新 mihomo 核心时 `gunzip -c > $TMPDIR/core_new` —— **57.4 MB 裸二进制 + 21 MB 的 .gz 一次性进内存盘** | 先 `sh /etc/ShellCrash/start.sh stop`，再删掉这些具体文件（**回收器不认 `.gz` / 裸二进制**，必须人工删）；腾出空间后重启再更新 |
 | `df` 说满了但 `du` 加起来没那么大 | tmpfs 用的是**页缓存 + shmem**，无 swap 时不可回收 | 只能靠删文件；不要指望内核回收 |
 | `error.yaml` 存在且内容是磁盘错 | 配置写不进去 | 先腾空间，再 `task/task.sh hotupdate` 重新生成 |
 
@@ -277,6 +277,7 @@ head -3 /tmp/ShellCrash/error.yaml 2>/dev/null
 `/var` 是指向 `/tmp` 的**相对软链** ⇒ `/var/etc` 就是 `/tmp/etc`，
 而那里是 **dnsmasq 生成配置文件**的目录。
 **只删具体文件名，绝不用通配符删目录**；删完确认 `ls -ld /var/etc`。
+自动回收器同样守这条边界：只动 `/tmp` 根目录、走正向白名单（[MAINTENANCE.md](MAINTENANCE.md) §6.2）。
 
 ---
 

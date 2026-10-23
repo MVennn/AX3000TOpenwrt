@@ -102,6 +102,7 @@ sh /etc/ShellCrash/routing-test.sh
 cat /etc/crontabs/root
 tail -20 /tmp/ShellCrash/guardian.log
 tail -20 /tmp/ShellCrash/dest-guard.log
+tail -10 /etc/router-health/tmp-usage.log
 tail -20 /etc/ShellCrash/logs/auto-update.log
 ```
 
@@ -124,6 +125,7 @@ sh /etc/router-health/reboot-verify.sh status
 | 干净出口守卫 | Google 判定当前 AI 出口为 CN | 切到预先实测可用的节点（先校验该节点确实在组内） |
 | AI 出口失效自愈 | 连续 3 次（=15 分钟）探测失败 | 在候选里找「能连通 + Google 判非 CN」的换过去；找不到就保持原样 |
 | nft 表补载 | quicguard / googlecn / googleroute 任一缺失 | 从 `/etc/*.nft` 重新加载 |
+| `/tmp` 水位与回收 | 独立 cron `*/5` 跑 `tmp-watch.sh`（不属 guardian） | 超 24 MB 写 WARN；白名单内 6 小时未修改的根目录文件自动删，**子目录不碰**（边界见 [MAINTENANCE.md](MAINTENANCE.md) §6.2） |
 
 另有 **1 分钟看门狗**（进程不在就拉起，且不会误杀已健康运行的代理）、
 **10 分钟站点健康守卫（dry-run）**、**10 分钟面板选择保存**、

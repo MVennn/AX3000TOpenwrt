@@ -11,6 +11,28 @@
 
 ## [未发布] — 2026-10-24
 
+### `/tmp` 自动回收（2026-10-23）
+
+- 新增 `system/router-health/tmp-watch.sh` + `tmp-watch.conf` 入库 —— 原先只存在于设备上。
+  脚本在原有「水位告警」之外增加**安全回收**：只删 `/tmp` 根目录、白名单内、6 小时未修改
+  且未被进程打开的文件；每轮最多 64 个 / 8 MB；额外精确回收
+  `/tmp/ShellCrash/config.yaml.rules-*.{del,ana}`（带 PID 的中间产物）。
+  **子目录永不递归**，`config.yaml` / `.bak-*` / `-test.yaml` 不在回收范围
+- 调整阈值 —— `TMP_WARN_KB` 30 MB → **24 MB**（上限 48 MiB 的 50%），
+  避免「28.7 MB 静默、34.4 MB 才报警」的盲区
+- 修复 —— 原脚本注释写「≥80% 会自动清」，实际只写日志 + `logger`，没有任何 `rm`。
+  2026-10-23 实测 `/tmp` 停在 34.4 MB 时连续 8 条 WARN 无人处理
+  （根因与规避见 [docs/PITFALLS.md](docs/PITFALLS.md) ⑩）
+- 实测（2026-10-23 22:00）—— `/tmp` 29,412 KB → 4.2 MB，`MemAvailable`
+  30,396 KB → 52,416 KB，`Shmem` 42,976 KB → 17,836 KB；清掉 87 个根目录调试文件 +
+  9 个中间产物，`config.yaml` md5 全程未变；`sh -n` ✓、dry-run（`TMPWATCH_PURGE=0`）✓、
+  无候选时静默 ✓
+- 文档同步 —— [docs/DEPLOY.md](docs/DEPLOY.md) 部署映射表与目录职责、
+  [docs/MAINTENANCE.md](docs/MAINTENANCE.md) 新增 §6「RAM 型 `/tmp` 的自动回收」、
+  [docs/OPERATIONS.md](docs/OPERATIONS.md) 定时任务与日志入口、
+  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) 修正「`/tmp` 无 `size=`、上限 119 MB」
+  与「守护 ≥80% 会自动清」两处过时描述，`GOMEMLIMIT` 状态从「待执行」改为「已生效」
+
 ### 文档正本与守卫规则（2026-10-24）
 
 - 新增 `docs/DOC-RULES.md` 变更触发矩阵一条 —— **修一个缺陷必须给对应正本补一条**

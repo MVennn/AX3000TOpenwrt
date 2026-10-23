@@ -109,7 +109,68 @@ du -sk .
 
 ---
 
-## 6. 不做什么（红线）
+## 6. RAM 型 `/tmp` 的自动回收
+
+> 与 §1–§5 的备份区不是一回事：这里管的是**内存盘**，占的是 RAM，不是 flash。
+
+`/tmp` 是 tmpfs，由 `/etc/init.d/tmpfs-cap` 封顶 **48 MiB**，且本机**无 swap** ——
+tmpfs 页不可回收，写满即 `ENOSPC`，ShellCrash 生成配置失败、退回基础配置
+（机制见 [PITFALLS.md](PITFALLS.md) ⑩）。它**没有自动过期机制**：OpenWrt 上没有
+tmpwatch / systemd-tmpfiles，只有删文件或重启才会降。
+
+### 6.1 回收器与阈值
+
+`/etc/router-health/tmp-watch.sh` 每 5 分钟一轮（cron），做两件事：**看水位** +
+**回收白名单内的陈旧文件**。阈值与开关在 `tmp-watch.conf`：
+
+| 键 | 默认 | 含义 |
+|---|---|---|
+| `TMP_WARN_KB` | 24576（24 MB，上限的 50%） | 超了写 WARN 日志 + syslog |
+| `TMP_CRIT_KB` | 40960（40 MB） | 超了写 CRIT，离 `ENOSPC` 只剩 8 MB |
+| `TMP_NOTICE_KB` / `TMP_GROWTH_KB` | 20480 / 4096 | 20 MB 以上且单轮增长 ≥4 MB → GROW 告警（早期发现泄漏） |
+| `TMP_PURGE` | 1 | `0` = 只观察不删 |
+| `TMP_PURGE_AGE_MIN` | 360 | 只删 6 小时未修改的文件 |
+
+### 6.2 回收边界（改脚本前必须守住）
+
+1. **只动 `/tmp` 根目录**（`find /tmp -maxdepth 1`），**永不递归进子目录** ——
+   `/tmp/ShellCrash/config.yaml` 是正在运行的配置，删了就是「掉配置」；
+2. **正向白名单**：`*.html` / `*.json` / `*.txt` / `*.log` / `*.out` / `*.sh` /
+   `test*.yaml` / `*.nft.new.*` / `cdnbody*`；没匹配上的一律不碰；
+3. **保护名单**：`TZ` / `resolv.conf` / `dhcp.leases` / `cron_tmp` / `.ujailnoafile` /
+   `luci-indexcache.*.json`；
+4. **三重保险**：6 小时未修改 + 没被任何进程打开（比对 `/proc/*/fd`）+
+   每轮最多 64 个 / 8 MB；
+5. 唯一进入子目录的例外：`/tmp/ShellCrash/config.yaml.rules-*.{del,ana}` ——
+   `rules-cnip.sh` / `rules-porn.sh` 带 PID 的中间产物（`trap` 未执行时残留，
+   文件名含 PID 永不复用）；`config.yaml` / `.bak-*` / `-test.yaml` 不在其中。
+
+### 6.3 首次清理记录（2026-10-23 22:00 实测）
+
+| 指标 | 清理前 | 清理后 |
+|---|---|---|
+| `/tmp` 已用 | 29,412 KB（60%） | 4.2 MB（9%） |
+| `MemAvailable` | 30,396 KB | 52,416 KB |
+| `Shmem` | 42,976 KB | 17,836 KB |
+
+共清掉 87 个根目录调试文件（网页抓取 `*.html`、`play*.json`、`bili-*.log` 等）
+与 9 个 ShellCrash 中间产物；`config.yaml` 的 md5 全程未变。
+
+**手工跑一次**（不影响 cron）：
+
+```sh
+sh /etc/router-health/tmp-watch.sh                    # 有候选才删，无候选静默
+TMPWATCH_PURGE=0 sh /etc/router-health/tmp-watch.sh   # 只观察，不删
+tail -5 /etc/router-health/tmp-usage.log              # 告警与回收台账（上限 64 KB）
+```
+
+**不在白名单内、需要人工判断的**：`/tmp/cache/apk`（apk 索引，每周 `apk update` 重建）、
+`/tmp/ShellCrash/config.yaml.bak-*` 与 `config.cnip-test.yaml`。回收器不碰它们 ——
+要清就按 §4 的思路先看再删具体文件名，**不要为了省事往白名单里加通配符**。
+
+---
+
+## 7. 不做什么（红线）
 
 以下都是**已经评估过并否决**的，别再提、别再动：
 
@@ -126,6 +187,7 @@ du -sk .
 | `apk del` ROM 里的包 | 闪存收益为 0（ROM 本来就不占 overlay） |
 | `/var -> /tmp` 软链 | 系统设计如此，见 [PITFALLS.md](PITFALLS.md) ② |
 | 删防火墙链、重启路由器 | 守护的硬约束：只做「检测 + 最小化修复」 |
+| **把 `/tmp` 回收范围扩到子目录、或改成通配符删目录** | `/tmp/ShellCrash` 里是正在运行的配置；`/var` 还是指向 `/tmp` 的相对软链，删目录会连带 dnsmasq 配置（见 [PITFALLS.md](PITFALLS.md) ②）。回收器只走 §6.2 的白名单 |
 | 改 root 口令、WiFi SSID / PSK、订阅链路 | **必须用户知情并同意**，脚本与守护都不碰 |
 
 **一个例外要记着**：`/www/modern`（用户自建项目）**不在 `sysupgrade.conf` 里**，
@@ -133,7 +195,7 @@ du -sk .
 
 ---
 
-## 7. 相关文档
+## 8. 相关文档
 
 | 要查什么 | 去哪 |
 |---|---|
