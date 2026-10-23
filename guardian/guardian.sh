@@ -33,7 +33,11 @@ CL="${CLEAN_GROUP:-🤖 干净出口}"
 # HY2 池优先（cc=SG）；HY2 整池挂掉时自动退到台湾-优化3（cc=TW）。
 # 不再写死单个 CLEAN_NODE —— 2026-10-22 实测 HY2 四个节点全挂，写死目标会让
 # 2.1「锁干净节点」把组切到死节点、2.3「存活守卫」再切走，每 5 分钟打一次。
-CLEAN_CANDIDATES="${CLEAN_NODE:+$CLEAN_NODE|}${CLEAN_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇰🇷 韩国KR-HY2|🇹🇼 台湾-优化3|🇹🇼 台湾-优化2-GPT}"
+# 不含韩国：2026-10-23 起 Google 按出口 IP 国家执行韩国成人内容强制年龄验证，
+# 弹「19 岁验证」且只认韩国手机号 —— 落韩国 = Google 搜索废掉，永远不进候选。
+# 不含「台湾-优化2-GPT」：不在干净出口组的 filter 内，put 必被控制 API 拒绝
+# （2026-10-23 实测：解析成它之后每轮 ERROR）。印度-优化 实测 cc=IN 兜底。
+CLEAN_CANDIDATES="${CLEAN_NODE:+$CLEAN_NODE|}${CLEAN_CANDIDATES:-🇸🇬 新加坡SG-HY2|🇯🇵 日本JP-HY2|🇹🇼 台湾-优化3|🇮🇳 印度-优化}"
 CL_ALIVE_URL="${CL_ALIVE_URL:-https://www.google.com/generate_204}"
 CLEAN_CACHE=/tmp/ShellCrash/.clean_node
 CLEAN_VERDICT_FILE=/tmp/ShellCrash/.clean_verdict
@@ -98,15 +102,20 @@ in_clean_list() {
 
 # 解析本轮唯一的干净出口，全脚本只认这一个结果（2.1 / 2.3 / 3.6 共用），
 # 避免各段各自挑节点导致每 5 分钟互相切换。优先级：
-#   1) 当前入口在候选里且 Google 可达 → 保持不动（稳定优先，HY2 恢复也不主动切回）；
+#   1) 当前入口在候选里、在组内且 Google 可达 → 保持不动（稳定优先，HY2 恢复也不主动切回）；
 #   2) 上次扫描已判定「全挂」且未到重试时间 → 不再重复扫，直接保持当前；
-#   3) 按候选顺序找第一个可达的；
+#   3) 按候选顺序找第一个「在组内且可达」的；
 #   4) 全挂 → 返回当前入口，并把 verdict=0 写盘，由 2.3 告警。
+# 「在组内」校验必须有：delay API 对任意已知节点都能测（哪怕不在组里），
+# 但 put 只接受组内成员 —— 2026-10-23 台湾-优化2-GPT 可达却在组外，解析成它
+# 之后 2.1 每轮 put 必失败，韩国就这样多留了一小时。
 # 探测结论写到 CLEAN_VERDICT_FILE：1=有可达入口，0=全部不可达。2.3 直接复用，
 # 不再二次探测 —— 节点到 Google 是间歇性抖动的，连探两次会得出相反结论。
 resolve_clean_node() {
   _cur=$(grp "$CL")
-  if [ -n "$_cur" ] && in_clean_list "$_cur" && node_alive "$_cur"; then
+  _members=$(curl -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$CL")" 2>/dev/null \
+    | sed -n 's/.*"all":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | sed 's/^"//;s/"$//')
+  if [ -n "$_cur" ] && in_clean_list "$_cur" && echo "$_members" | grep -Fxq "$_cur" && node_alive "$_cur"; then
     echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
     echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
     echo "$_cur"
@@ -123,7 +132,7 @@ resolve_clean_node() {
   fi
   _oldifs="$IFS"; IFS="|"
   for _cand in $CLEAN_CANDIDATES; do
-    if node_alive "$_cand"; then
+    if echo "$_members" | grep -Fxq "$_cand" && node_alive "$_cand"; then
       IFS="$_oldifs"
       echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
       echo "$(date +%s) $_cand" > "$CLEAN_CACHE" 2>/dev/null
@@ -153,6 +162,15 @@ is_bad_node() {
 is_hk_only() {
   case "$1" in
     *香港*|*HK*|*Hong*Kong*) return 0 ;;
+  esac
+  return 1
+}
+# 韩国出口对 Google 生态不可用：韩国对成人内容强制年龄验证，Google 按出口 IP
+# 国家执行，搜索即弹「19 岁验证」且只认韩国手机号。is_bad_node 豁免全部 HY2
+# （对 AI 干净），韩国 HY2 要在这里单独拦 —— 2.1 据此把落在韩国的组扳走。
+is_kr_node() {
+  case "$1" in
+    *韩国*|*🇰🇷*) return 0 ;;
   esac
   return 1
 }
@@ -233,15 +251,15 @@ fi
 
 # ---------- 2.1) AI网页 / 干净出口 锁到同一个干净节点 ----------
 # 目标节点每轮只解析一次（resolve_clean_node）：当前入口在候选里且可达就不动，
-# 否则按候选顺序找第一个可达的。判定条件是「判 CN 的坏节点 或 Google 不可达」，
-# 死节点也在这里被换掉，不再依赖 2.3 事后补救。
+# 否则按候选顺序找第一个可达的。判定条件是「判 CN 的坏节点 或 Google 不可达
+# 或落在韩国（成人内容强制年龄验证）」，死节点也在这里被换掉，不再依赖 2.3 事后补救。
 CLEAN_NODE=$(resolve_clean_node)
 if [ -z "$CLEAN_NODE" ]; then
   log "WARN: 无法解析干净出口（控制 API 无响应或候选全挂），本轮跳过 2.1/2.2"
 else
   for g in "$AI_WEB" "$CL"; do
     NOW=$(grp "$g")
-    if [ -n "$NOW" ] && [ "$NOW" != "$CLEAN_NODE" ] && { is_bad_node "$NOW" || ! node_alive "$NOW"; }; then
+    if [ -n "$NOW" ] && [ "$NOW" != "$CLEAN_NODE" ] && { is_bad_node "$NOW" || ! node_alive "$NOW" || is_kr_node "$NOW"; }; then
       if [ "$(put "$g" "$CLEAN_NODE")" = "204" ]; then
         log "FIX: $g 从「$NOW」切到干净出口「$CLEAN_NODE」"
       else
