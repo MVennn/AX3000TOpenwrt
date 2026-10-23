@@ -117,6 +117,7 @@ docs/ 下的文档一律 `ALL-CAPS-WITH-HYPHENS.md`（如 `TROUBLESHOOTING.md`�
 
 | 变更 | 必须同步 |
 |---|---|
+| **修一个缺陷**（行为变化 / 判据修正 / 安全加固） | 对应正本补一条 **现象 → 根因 → 怎么避**：[PITFALLS.md](PITFALLS.md)；CHANGELOG 只是变更记录，**不算补文档** |
 | 改脚本（`system/` `guardian/` `recovery/`） | [DEPLOY.md](DEPLOY.md)（目标路径 / 被谁调用 / 回退方式）、[OPERATIONS.md](OPERATIONS.md) 的相关值、[TROUBLESHOOTING.md](TROUBLESHOOTING.md) 的对应节 |
 | 路由器当前配置变了 | [OPERATIONS.md](OPERATIONS.md)（**只改正文里的当前值**）；[HARDWARE.md](HARDWARE.md)（设备事实变了才动） |
 | 设备事实变了（换固件 / 换硬件） | [HARDWARE.md](HARDWARE.md)（带新时点）；[OPERATIONS.md](OPERATIONS.md) 同步 |
