@@ -82,6 +82,9 @@ def tracked_files() -> list[str]:
     except FileNotFoundError:
         print("✗ 找不到 git 命令")
         raise SystemExit(2)
+    if out.returncode != 0:
+        print("✗ git ls-files 失败：" + (out.stderr or "").strip())
+        raise SystemExit(2)
     return [x for x in out.stdout.splitlines() if x.strip()]
 
 

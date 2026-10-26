@@ -94,6 +94,12 @@ core_up && log "CrashCore 已就绪" || log "!! 30 秒内核心未就绪"
 
 section "4. 加载自建 nft 表（DNS 劫持 / QUIC 拦截 / Google 直连）"
 for t in quicguard googlecn googleroute; do
+    # 与 rc.local 同口径：DNS 端口没起来就不装劫持表，否则内网解析
+    # 全部指向无人监听的 1053，反而复现「连上却没网」。
+    if [ "$t" = "googleroute" ] && ! dns_up; then
+        log "!! :1053 未监听，跳过 DNS 劫持表 googleroute（保持直连）"
+        continue
+    fi
     if [ -f "/etc/$t.nft" ]; then
         nft -f "/etc/$t.nft" >/dev/null 2>&1 && log "已加载 inet $t" || log "!! inet $t 加载失败"
     else

@@ -23,6 +23,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # 金库守卫用 --all 扫历史提交，浅克隆会让它只看得到 1 个提交。
+          fetch-depth: 0
 
       # 私有金库守卫：vault/ 下的私钥与整机快照绝不能进版本库。
       # .gitignore 已经排除了 /vault/，这里是兜底。

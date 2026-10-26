@@ -18,7 +18,7 @@ if [ -n "${ROUTER_PASSWORD:-}" ]; then
 fi
 
 for f in "$HERE/.router-password" "$HOME/.router-password"; do
-	if [ -f "$f" ]; then
+	if [ -s "$f" ]; then
 		head -n 1 "$f"
 		exit 0
 	fi

@@ -113,7 +113,7 @@ in_clean_list() {
 # 不再二次探测 —— 节点到 Google 是间歇性抖动的，连探两次会得出相反结论。
 resolve_clean_node() {
   _cur=$(grp "$CL")
-  _members=$(curl -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$CL")" 2>/dev/null \
+  _members=$($CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$CL")" 2>/dev/null \
     | sed -n 's/.*"all":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | sed 's/^"//;s/"$//')
   if [ -n "$_cur" ] && in_clean_list "$_cur" && echo "$_members" | grep -Fxq "$_cur" && node_alive "$_cur"; then
     echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
@@ -153,7 +153,9 @@ is_bad_node() {
   case "$1" in
     *-HY2*) return 1 ;;
     *台湾-优化3*|*台湾-优化2-GPT*) return 1 ;;
-    *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*印度*|*过滤掉14条线路*|*过滤掉10条线路*) return 0 ;;
+    # 印度已从坏节点清单移除：2026-10-23 实测「印度-优化」cc=IN，且是
+    # CLEAN_CANDIDATES 的兜底项；继续判坏会让 2.1 与候选解析互相扳动。
+    *日本-优化*|*台湾-优化*|*美国LA-优化*|*新加坡-优化*|*香港-优化*|*香港WAP-优化*|*德国-优化*|*加拿大-优化*|*英国-优化*|*过滤掉14条线路*|*过滤掉10条线路*) return 0 ;;
   esac
   return 1
 }
@@ -309,14 +311,19 @@ fi
 # ---------- 3.5) 通用出口健康守卫（EXIT_HEALTH）----------
 # 通用池的节点会劣化（实测德国节点从 5s 恶化到 15s，表现为全站超时）。
 # 这里按真实出口耗时判定：超过 3 秒就复位到「♻️ 自动选择」（url-test 会挑最快的节点）。
-T1=$(/usr/bin/curl -s -m 12 -o /dev/null -w "%{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
-T2=$(/usr/bin/curl -s -m 12 -o /dev/null -w "%{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
-if [ -n "$T1" ] && [ -n "$T2" ]; then
+P1=$($CURL -s -m 12 -o /dev/null -w "%{http_code} %{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
+P2=$($CURL -s -m 12 -o /dev/null -w "%{http_code} %{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
+if [ -n "$P1" ] && [ -n "$P2" ]; then
   # 两次探测取较慢那次；取 max 后不能再除 2（除 2 会把阈值整体压低一半）。
-  MS=$(echo "$T1 $T2" | awk '{t+=($1>$2?$1:$2)} END{printf "%.1f", t}')
-  if ge_sec "$MS" 3; then
+  MS=$(echo "$P1 $P2" | awk '{t=($2>$4?$2:$4)} END{printf "%.1f", t}')
+  BAD=0
+  # 节点被封/被拒时常表现为"快速失败"（502/连接被拒），只看耗时会把
+  # 它误判为健康；非 2xx/3xx 一律按劣化处理。
+  case "${P1%% *}" in 2*|3*) ;; *) BAD=1 ;; esac
+  case "${P2%% *}" in 2*|3*) ;; *) BAD=1 ;; esac
+  if [ "$BAD" = "1" ] || ge_sec "$MS" 3; then
     if [ "$(put "$POOL_GROUP" "$POOL_FALLBACK_GROUP")" = "204" ]; then
-      log "FIX: 通用出口耗时 ${MS}s（>3s，疑似节点劣化），复位为「♻️ 自动选择」"
+      log "FIX: 通用出口劣化（HTTP ${P1%% *}/${P2%% *}，耗时 ${MS}s，阈值 3s），复位为「♻️ 自动选择」"
     else
       log "ERROR: 通用出口复位失败（控制 API 拒绝）"
     fi
@@ -339,10 +346,13 @@ fi
 CL_PROBE_URL="https://gemini.google.com/"
 
 clean_exit_ms() {
-  C1=$(/usr/bin/curl -s -m 15 -o /dev/null --max-filesize 131072 -w "%{time_total}" -x "$PROXY" "$CL_PROBE_URL" 2>/dev/null)
-  C2=$(/usr/bin/curl -s -m 15 -o /dev/null --max-filesize 131072 -w "%{time_total}" -x "$PROXY" "$CL_PROBE_URL" 2>/dev/null)
+  C1=$($CURL -s -m 15 -o /dev/null --max-filesize 131072 -w "%{http_code} %{time_total}" -x "$PROXY" "$CL_PROBE_URL" 2>/dev/null)
+  C2=$($CURL -s -m 15 -o /dev/null --max-filesize 131072 -w "%{http_code} %{time_total}" -x "$PROXY" "$CL_PROBE_URL" 2>/dev/null)
   [ -z "$C1" ] && [ -z "$C2" ] && { echo "99"; return; }
-  echo "$C1 $C2" | awk '{t+=($1>$2?$1:$2)} END{printf "%.1f", t}'
+  # 同上：非 2xx/3xx 直接按劣化处理，避免"快速失败"被当成健康。
+  case "${C1%% *}" in 2*|3*) ;; *) echo "99"; return ;; esac
+  case "${C2%% *}" in 2*|3*) ;; *) echo "99"; return ;; esac
+  echo "$C1 $C2" | awk '{t=($2>$4?$2:$4)} END{printf "%.1f", t}'
 }
 clean_exit_bad() {
   MS=$(clean_exit_ms)

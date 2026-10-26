@@ -19,6 +19,10 @@ run(){ log "\$ $*"; "$@" 2>&1 | tee -a "$LOG"; }
 restore_cron(){ [ -f /tmp/cron.upgrade.bak ] && crontab /tmp/cron.upgrade.bak 2>/dev/null; }
 wait_core(){ i=0; while [ "$i" -lt 30 ]; do pidof CrashCore >/dev/null 2>&1 && netstat -lntp 2>/dev/null | grep -q ':7892' && return 0; sleep 1; i=$((i+1)); done; return 1; }
 
+# 升级前记下原值：回滚要回到「原状」，不能把用户自定义的核心链接清空。
+ORIG_CORE_V=$(sed -n 's/^core_v=//p' "$CFG" 2>/dev/null | head -1)
+ORIG_CUSTLINK=$(sed -n 's/^custcorelink=//p' "$CFG" 2>/dev/null | head -1)
+
 rollback(){
     log "!!! 进入回滚：重新下载 $OLD"
     rm -f "$RAW"
@@ -30,7 +34,11 @@ rollback(){
         log "!!! 回滚下载失败，核心文件缺失，ShellCrash 下次启动会尝试从镜像重下"
     fi
     sed -i "s/^core_v=.*/core_v=$OLD/" "$CFG"
-    sed -i 's|^custcorelink=.*|custcorelink=|' "$CFG"
+    if [ -n "$ORIG_CUSTLINK" ]; then
+        sed -i "s|^custcorelink=.*|custcorelink=$ORIG_CUSTLINK|" "$CFG"
+    else
+        sed -i 's|^custcorelink=.*|custcorelink=|' "$CFG"
+    fi
     rm -f "$OLDGZ"
     mkdir -p /tmp/ShellCrash
     ln -sf "$RAW" /tmp/ShellCrash/CrashCore

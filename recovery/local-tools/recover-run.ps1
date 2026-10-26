@@ -49,6 +49,7 @@ Write-Host ''
 $sshArgs = @(
     '-o', 'StrictHostKeyChecking=no',
     '-o', 'UserKnownHostsFile=NUL',
+    '-o', 'LogLevel=ERROR',
     '-o', 'PubkeyAuthentication=no',
     '-o', 'PreferredAuthentications=password',
     '-o', 'RequestTTY=no',
@@ -56,7 +57,15 @@ $sshArgs = @(
     'cat > /tmp/recover-now.sh && ash /tmp/recover-now.sh'
 )
 
-$content | & $ssh.Source @sshArgs 2>&1 | Tee-Object -FilePath $outFile
+# Windows PowerShell 5.1 wraps native stderr as ErrorRecord; with the global
+# 'Stop' preference the first ssh warning would abort the whole recovery.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $content | & $ssh.Source @sshArgs 2>&1 | Tee-Object -FilePath $outFile
+} finally {
+    $ErrorActionPreference = $prevEap
+}
 
 Write-Host ''
 Write-Host "Output saved to: $outFile" -ForegroundColor Cyan

@@ -32,6 +32,9 @@ def git(*args: str) -> str:
     except FileNotFoundError:
         print("✗ 找不到 git 命令 —— CI 镜像里要先装 git（apt-get install -y git）")
         raise SystemExit(2)
+    if r.returncode != 0:
+        print("✗ git %s 失败：%s" % (" ".join(args), (r.stderr or "").strip()))
+        raise SystemExit(2)
     return r.stdout
 
 
@@ -50,6 +53,9 @@ def main() -> int:
             bad.append(norm)
 
     if args.all:
+        if git("rev-parse", "--is-shallow-repository").strip() == "true":
+            print("⚠ 浅克隆仓库：--all 只能看到已拉取的提交，历史泄漏检查不完整"
+                  "（CI 需 checkout 时 fetch-depth: 0）")
         log = git("log", "--all", "--name-only", "--pretty=format:")
         for f in {x for x in log.split("\n") if x.strip()}:
             norm = f.replace("\\", "/")

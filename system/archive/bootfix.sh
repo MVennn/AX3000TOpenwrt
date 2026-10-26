@@ -50,10 +50,11 @@ if ! grep -q 'start_legacy_wd.sh' /etc/crontabs/root 2>/dev/null; then
     log "FIX: restored legacy watchdog cron line"
 fi
 EOF
-    awk 'NR==FNR{blk=blk $0 "\n"; next} {lines[NR]=$0} END{for(i=1;i<NR;i++)print lines[i]; printf "%s", blk; print lines[NR]}' \
+    awk 'NR==FNR{blk=blk $0 "\n"; next} {lines[FNR]=$0} END{for(i=1;i<FNR;i++)print lines[i]; printf "%s", blk; print lines[FNR]}' \
         /tmp/lifeline.txt /etc/ShellCrash/guardian.sh > /tmp/guardian.new
     cat /tmp/guardian.new > /etc/ShellCrash/guardian.sh
     chmod 755 /etc/ShellCrash/guardian.sh
+    head -1 /etc/ShellCrash/guardian.sh | grep -q '^#!' || echo "WARN: guardian.sh 首行不是 shebang（检查插入位置）"
     rm -f /tmp/guardian.new /tmp/lifeline.txt
     echo "guardian cron self-heal: inserted before final exit"
 fi

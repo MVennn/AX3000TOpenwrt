@@ -113,8 +113,10 @@ if ! mkdir "$LOCK" 2>/dev/null; then
   _T=$(cat "$LOCK/ts" 2>/dev/null || echo 0)
   case "$_T" in ''|*[!0-9]*) _T=0 ;; esac
   if [ $(( $(date +%s) - _T )) -gt 900 ]; then
+    # 锁目录每轮都会写入 ts，永远非空；必须连文件一起删，rmdir 才能成功。
+    rm -f "$LOCK/ts" 2>/dev/null
     rmdir "$LOCK" 2>/dev/null
-    mkdir "$LOCK" 2>/dev/null || exit 0
+    mkdir "$LOCK" 2>/dev/null || { log "ALERT: 清除陈旧锁失败（$LOCK），本轮退出"; exit 0; }
   else
     exit 0
   fi

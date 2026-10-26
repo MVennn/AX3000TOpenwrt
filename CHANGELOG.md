@@ -9,7 +9,39 @@
 
 ---
 
-## [未发布] — 2026-10-24
+## [0.4.1] — 2026-10-26
+
+### 全仓审查修复（2026-10-26）
+
+- 修复 `guardian/dest-guard.sh` —— 陈旧锁回收只 `rmdir` 非空目录，必然失败且被
+  `2>/dev/null` 吞掉；一次 `kill -9` / OOM / 掉电后每轮静默退出，站点守卫永久失效。
+  改为先 `rm -f "$LOCK/ts"` 再 `rmdir`，仍失败则写 `ALERT`（PITFALLS ⑬）
+- 修复 `guardian/guardian.sh` 健康探测 —— 3.5 / 3.6 只看 `%{time_total}`，节点被封时
+  「快速失败」（502 / 连接被拒）耗时只有零点几秒，被判健康。改为同时取 `%{http_code}`，
+  非 2xx/3xx 一律按劣化处理（PITFALLS ⑭）
+- 修复 `guardian/guardian.sh` 的印度矛盾 —— `CLEAN_CANDIDATES` 含「印度-优化」
+  （10-23 实测 cc=IN），`is_bad_node` 却仍按 10-22 结论把 `*印度*` 判坏，
+  2.1 会与候选解析互相扳动；以新实测为准移出坏清单
+- 修复 `guardian/guardian.sh` 一处裸 `curl` —— `resolve_clean_node` 取组成员改用
+  `$CURL`，与全脚本约定一致
+- 修复 `recovery/recover-now.sh` —— 核心 30 秒未就绪仍无条件重载含 DNS 劫持的
+  `googleroute`，会自演「连上 WiFi 没网」；第 4 节加载前加 `:1053` 就绪门控
+  （与 rc.local 同口径）
+- 修复 `system/archive/bootfix.sh` —— awk 双文件插入用全局 `NR` 当数组下标，
+  会给 guardian.sh 头部插 N 行空行、shebang 不再首行；改用 `FNR` 并在插入后自检首行
+- 修复 `recovery/local-tools/recover-run.ps1` —— Windows PowerShell 5.1 下
+  `2>&1` + `ErrorActionPreference=Stop` 会让 ssh 首条 stderr（known-hosts 警告）
+  终止整个恢复；加 `LogLevel=ERROR` 并局部放宽为 `Continue`
+- 修复 `tools/check-vault-not-staged.py` —— `--all` 在 CI 浅克隆下只能看到 1 个提交，
+  且 git 失败时打假绿；CI 检出加 `fetch-depth: 0`，git 返回码非零直接报错
+- 修复 `tools/check-secrets.py` —— `git ls-files` 失败时按 0 文件「通过」；改为报错退出
+- 修复 `recovery/local-tools/askpass.sh` —— 空的 `.router-password` 会吐出空口令；
+  改为 `-s` 判非空
+- 修复 `system/archive/core-upgrade.sh` —— 回滚无条件清空 `custcorelink`，用户自定义
+  链接丢失；升级前备份原值、回滚按原值恢复
+- 验证 —— 全量 `sh -n` ✓、`python -m py_compile` ✓、`tools/check-secrets.py` ✓
+  （58 文件）；guardian / dest-guard 部署后 `ash -n` ✓、md5 与仓库一致，
+  实跑一轮 rc=0、日志无 ERROR
 
 ### 干净出口韩国节点治理（2026-10-24）
 
