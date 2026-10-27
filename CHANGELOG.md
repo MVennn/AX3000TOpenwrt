@@ -9,6 +9,18 @@
 
 ---
 
+## [未发布]
+
+### guardian 增加 AI API 数据面探活（2026-10-27）
+
+- 新增 `guardian/guardian.sh` 2.4 段 —— 每轮对 `🤖 AI接口` 的当前节点打一次
+  `https://opencode.ai/zen/go/v1/models`（经 `127.0.0.1:7890`；不带 key，
+  401/403 也证明链路通，只有 `000` 算坏），坏则写 `WARN`
+- **只告警、不 `put`** —— `🤖 AI接口` 是 url-test，`put` 会写 `fixed` 把自动选路
+  永久钉死；重选交给该组的 `interval`（已从默认 300s 调到 60s，见 ShellcrashRules 仓）
+- 起因：2026-10-27 该组选中的 LA 节点「面板 alive、健康检查也过」但数据面已死，
+  zgate 侧表现为 15s TLS 握手超时后 502。见 `docs/PITFALLS.md` ⑮
+
 ## [0.4.1] — 2026-10-26
 
 ### 全仓审查修复（2026-10-26）

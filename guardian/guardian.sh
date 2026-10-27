@@ -251,6 +251,24 @@ if [ -n "$AI_NOW" ]; then
   fi
 fi
 
+# ---------- 2.4) AI API 数据面探活（🤖 AI接口）----------
+# url-test 的健康检查打的是 https://opencode.ai/ 根路径；根路径通了不代表 API
+# 路径能用。2026-10-27 实测该组选中的「🇺🇸 美国LA-优化-GPT」面板 alive、探活
+# 也过，但 /zen/go/v1/models 与根路径同时死 —— zgate 侧表现为 TLS 握手超时
+# （15s）后 502，回落 WorkBuddy 免费池再撞 429，一次回复拖到 22–32s。
+# 这里只「检测 + 告警」，不切组：🤖 AI接口 是 url-test，put 会写 fixed 把自动
+# 选路永久钉死；重选交给 interval（已从默认 300s 调到 60s，最多 1 分钟）。
+AI_API_GROUP="${AI_API_GROUP:-🤖 AI接口}"
+AI_API_PROBE="${AI_API_PROBE:-https://opencode.ai/zen/go/v1/models}"
+AI_API_NOW=$(grp "$AI_API_GROUP")
+if [ -n "$AI_API_NOW" ]; then
+  # 不带 key：401/403 也证明 TLS 与 HTTP 链路通，只有 000（超时/握不上）才算坏
+  AI_API_R=$($CURL -s -m 10 -o /dev/null -w "%{http_code} %{time_total}" -x "$PROXY" "$AI_API_PROBE" 2>/dev/null)
+  case "${AI_API_R%% *}" in
+    000|'') log "WARN: $AI_API_GROUP 数据面不可达（当前节点「$AI_API_NOW」，$AI_API_PROBE 无响应）；url-test 下一轮复测应自动换节点" ;;
+  esac
+fi
+
 # ---------- 2.1) AI网页 / 干净出口 锁到同一个干净节点 ----------
 # 目标节点每轮只解析一次（resolve_clean_node）：当前入口在候选里且可达就不动，
 # 否则按候选顺序找第一个可达的。判定条件是「判 CN 的坏节点 或 Google 不可达
