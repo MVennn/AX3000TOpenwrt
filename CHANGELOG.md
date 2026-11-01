@@ -11,6 +11,25 @@
 
 ## [未发布]
 
+### 闪存磨损审查：tmp-watch 状态文件迁 /tmp（2026-11-01）
+
+- 三仓（本仓 / OpenwrtOpsToolkit / ShellcrashRules）路由器侧脚本做了一次
+  **闪存写入磨损专项审查**（逐脚本列「写哪里、多频繁、写多大」）。本仓结论：
+  guardian.sh / dest-guard.sh / memgate.sh / backup-prune.sh 的常驻写入全部
+  已在 tmpfs 或低频带轮转（tmp-usage.log、backup-prune.log、memgate.log 都有
+  64KB/16KB 上限），唯一的高频闪存写入点是 `tmp-watch.sh` 的增速状态文件
+  `.tmp-watch.state` —— 每 5 分钟整写一次（288 次/天），纯属磨损
+- 优化 `system/router-health/tmp-watch.sh` —— 状态文件迁到
+  `/tmp/router-health/.tmp-watch.state`（tmpfs，路径可用 `TMPWATCH_STATE` 覆盖）。
+  **告警路径 / 阈值 / 日志格式 / 回收边界一行未动**：状态只存「上轮 /tmp 用量」
+  供 GROW 增速告警用，重启丢失等同开机首轮（PREV=0，/tmp 开机本来就近空，
+  不会误报 GROW）；写状态前 `mkdir -p` 父目录
+- 沙箱验证 —— 路由器实测 9 项断言：`TMPWATCH_STATE` 指到沙箱时状态写沙箱、
+  默认路径自动建目录、闪存旧状态 mtime 全程不动、无日志残留、rc=0
+- 部署 —— `/etc/router-health/tmp-watch.sh` md5 `e0e65b07…` 与仓库一致；
+  真机幂等复跑一轮正常；旧的 `/etc/router-health/.tmp-watch.state` 已清理
+  （一次性，避免闪存上留孤儿文件）
+
 ### backup-prune.sh 独立审查修复（2026-11-01）
 
 - 对 11-01 入库的 `system/router-health/backup-prune.sh`（当时只经作者代理自测）做

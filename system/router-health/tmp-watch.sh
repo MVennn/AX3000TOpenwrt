@@ -26,7 +26,12 @@
 DIR=/etc/router-health
 CONF="${TMPWATCH_CONF:-$DIR/tmp-watch.conf}"
 LOG="$DIR/tmp-usage.log"
-STATE="$DIR/.tmp-watch.state"
+# 状态文件只存「上轮 /tmp 用量」一个数，每 5 分钟被整写一次 —— 高频小写入
+# 放闪存（overlay）上纯属磨损，改放 /tmp（tmpfs），路径可用 TMPWATCH_STATE 覆盖。
+# 重启丢失等同开机首轮：PREV 按 0 起，GROW 口径与阈值不变（/tmp 开机本来就近空，
+# 不会因此误报；告警路径、阈值、日志格式一律不动）。
+STATE_DIR=/tmp/router-health
+STATE="${TMPWATCH_STATE:-$STATE_DIR/.tmp-watch.state}"
 LOGMAX=65536
 
 [ -r "$CONF" ] || CONF=/etc/router-health/tmp-watch.conf
@@ -159,6 +164,7 @@ if [ "$PURGE" = "1" ]; then
 	fi
 fi
 
+mkdir -p "${STATE%/*}" 2>/dev/null
 echo "$USED" > "$STATE" 2>/dev/null
 
 [ -z "$LEVEL" ] && [ -z "$PURGE_NOTE" ] && exit 0
