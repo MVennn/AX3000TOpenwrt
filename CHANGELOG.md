@@ -11,6 +11,17 @@
 
 ## [未发布]
 
+### 设备备份区修剪（2026-11-01）
+
+- 修剪路由器 `/root/backup` —— 1004 KB → 692 KB：按 MAINTENANCE §3/§4 删同 basename
+  旧副本与第 4 个及以后的 `pre-*`（共 26 项），按 §5「改完即删」清掉已验证改动的
+  散落副本（guardian.sh / proxy-groups.yaml / ai-api-check.sh 等，判据：部署版与
+  仓库 md5 一致、health 日志 10-27 起 0 ERROR）；必保留清单（sysupgrade.conf、
+  argon 主题包）与最近 3 个 `pre-*` 原样保留
+- 清掉 `/etc/router-health/` 的 tmp-watch `.bak-20261023` 一对 —— 改动已入库
+  （b63407a）并运行 9 天，回退走 git 历史，不再留副本
+- 仓库侧清掉 `tools/__pycache__/` 构建残留（本就不入库）
+
 ### guardian 增加 AI API 数据面探活（2026-10-27）
 
 - 新增 `guardian/guardian.sh` 2.4 段 —— 每轮对 `🤖 AI接口` 的当前节点打一次
