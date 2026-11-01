@@ -64,12 +64,12 @@ Release 说明文件名、发版 tag，三处**必须一致**。
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | **`0.4.1`** |
-| 日期 | **2026-10-26** |
-| 性质 | 审查修复：锁回收、探针状态码、恢复门控、脚本健壮性 |
+| 当前版本 | **`0.5.0`** |
+| 日期 | **2026-11-01** |
+| 性质 | 功能更新：AI API 数据面探活；备份修剪三修与 /root/backup 扩管；tmp-watch 迁 tmpfs |
 
-本版条目见 [CHANGELOG.md](../CHANGELOG.md) 的 `## [0.4.1]` 段，
-Release 说明见 [release-notes/0.4.1.md](release-notes/0.4.1.md)，tag 为 `v0.4.1`。
+本版条目见 [CHANGELOG.md](../CHANGELOG.md) 的 `## [0.5.0]` 段，
+Release 说明见 [release-notes/0.5.0.md](release-notes/0.5.0.md)，tag 为 `v0.5.0`。
 
 ## 5. 不发版的时候：不要动版本号
 
