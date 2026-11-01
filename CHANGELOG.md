@@ -9,7 +9,18 @@
 
 ---
 
-## [未发布]
+## [0.5.0] — 2026-11-01
+
+### 守卫脚本 bug 奇偶同步（2026-11-01）
+
+- `tools/check-secrets.py` 对齐 ClientTriage `c3a3952` 已修的三类漏报 ——
+  混行豁免改逐命中段（只免注释/字符串内的命中段，不再整行放行）、
+  `re.search` 改 `finditer`（同一行多个命中不再只报第一个）、`--all` 遵循
+  `.gitignore`；分叉差异（SKIP_DIRS、文档前缀等）全部保留，加出处头注释
+- `tools/check-docs.py` 对齐 ClientTriage `c3a3952` / WindowsRemoteOps
+  `156562c` 已修的四处功能性 bug —— BOM 首锚点、跨盘符 relpath 崩溃、
+  冻结锚点误报、引言块只认头部；分叉差异（检查项、忽略目录）保留，加出处头注释
+- 文档脱敏 —— 守卫文档示例中的本机用户名改占位（`d4003c0`）
 
 ### 闪存磨损审查：tmp-watch 状态文件迁 /tmp（2026-11-01）
 
