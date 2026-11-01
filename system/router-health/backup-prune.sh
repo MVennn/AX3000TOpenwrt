@@ -25,7 +25,8 @@
 #   * names listed in $ROOT/.keep are never deleted.
 #   * idempotent: a second run with no new backups deletes nothing more.
 #
-# Exit codes: 0 ok, 1 nothing to do / root missing, 2 busy (lock held).
+# Exit codes (always from phase 2): 0 ok / nothing to do, 1 phase-2 root
+# missing, 2 busy (lock held).
 # (phase 1 never exits on its own; the exit code always comes from phase 2.)
 
 # ======================================================================
@@ -79,7 +80,9 @@ b_is_keep() {  # $1 = entry name; return 0 = protected, 1 = not protected
   for b_k in $BK_ALWAYS; do
     [ "$b_name" = "$b_k" ] && return 0
   done
-  if [ -f "$BROOT/.keep" ] && grep -q "^$b_name\$" "$BROOT/.keep" 2>/dev/null; then
+  # -xF = fixed-string whole-line match: names with regex metachars
+  # (e.g. uhttpd.crt.orig) must not widen the protected set.
+  if [ -f "$BROOT/.keep" ] && grep -qxF "$b_name" "$BROOT/.keep" 2>/dev/null; then
     return 0
   fi
   return 1
@@ -97,11 +100,29 @@ if [ -d "$BROOT" ]; then
       rm -f "$LOCK_B"
     fi
   fi
+  # NOTE: do NOT use `: > file` here (or anywhere in phase 1): `:` is a POSIX
+  # special builtin, and on a failed redirection (e.g. /tmp scratch full) the
+  # shell exits the whole script on the spot - silently, without an audit log
+  # line, and phase 2 would never run (2026-11-01 sandbox-proven on busybox
+  # ash). `true` is a regular builtin: a failed redirection just fails that
+  # one command and the run degrades to "delete nothing, log why".
   if [ "$B_RUN" -eq 1 ]; then
-    : > "$LOCK_B"
-    trap 'rm -rf "$TMPD_B" 2>/dev/null; rm -f "$LOCK_B" 2>/dev/null' EXIT INT TERM
-    mkdir -p "$TMPD_B"
-    : > "$TMPD_B"/cand
+    if ! true > "$LOCK_B" 2>/dev/null; then
+      log2 "backup-prune: /root/backup: cannot create lock - skipping phase 1"
+      B_RUN=0
+    fi
+  fi
+  if [ "$B_RUN" -eq 1 ]; then
+    trap 'rm -rf "$TMPD_B" 2>/dev/null; rm -f "$LOCK_B" 2>/dev/null; exit' EXIT INT TERM
+    if ! mkdir -p "$TMPD_B" 2>/dev/null; then
+      log2 "backup-prune: /root/backup: cannot create scratch dir $TMPD_B - skipping phase 1"
+      rm -f "$LOCK_B"
+      trap - EXIT INT TERM
+      B_RUN=0
+    fi
+  fi
+  if [ "$B_RUN" -eq 1 ]; then
+    true > "$TMPD_B"/cand
 
     # ---- classify direct children (pattern rules + anchor check) ----
     B_ENTRIES=0
@@ -117,7 +138,7 @@ if [ -d "$BROOT" ]; then
     done
 
     # ---- pre-* dirs: keep newest BKEEP_PRE, older = candidates ----
-    : > "$TMPD_B"/pre
+    true > "$TMPD_B"/pre
     for b_f in "$BROOT"/pre-*; do
       [ -d "$b_f" ] || continue
       [ -L "$b_f" ] && continue
@@ -133,7 +154,7 @@ if [ -d "$BROOT" ]; then
     done < "$TMPD_B"/pre
 
     # ---- *.bak-* files: same stem keeps only the newest 1 ----
-    : > "$TMPD_B"/stems
+    true > "$TMPD_B"/stems
     for b_f in "$BROOT"/*.bak-*; do
       [ -f "$b_f" ] || continue
       [ -L "$b_f" ] && continue
@@ -142,7 +163,7 @@ if [ -d "$BROOT" ]; then
     done | sort -u > "$TMPD_B"/stems
     while IFS= read -r b_stem; do
       [ -n "$b_stem" ] || continue
-      : > "$TMPD_B"/stemfiles
+      true > "$TMPD_B"/stemfiles
       for b_f in "$BROOT"/"$b_stem".bak-*; do
         [ -f "$b_f" ] || continue
         [ -L "$b_f" ] && continue
@@ -163,7 +184,7 @@ if [ -d "$BROOT" ]; then
     [ -n "$B_TOTAL_KB" ] || B_TOTAL_KB=0
     if [ "$B_TOTAL_KB" -gt "$BSIZE_MAX_KB" ]; then
       log2 "backup-prune: /root/backup: total ${B_TOTAL_KB}KB > ${BSIZE_MAX_KB}KB - size-cap cull"
-      : > "$TMPD_B"/loose
+      true > "$TMPD_B"/loose
       for b_f in "$BROOT"/*; do
         [ -f "$b_f" ] || continue
         [ -L "$b_f" ] && continue
@@ -173,7 +194,7 @@ if [ -d "$BROOT" ]; then
         b_m=$(date -r "$b_f" +%s 2>/dev/null)
         case "$b_m" in ''|*[!0-9]*) b_m=$NOW_B ;; esac
         echo "$b_m $b_f"
-      done | sort -rn > "$TMPD_B"/loose
+      done | sort -n > "$TMPD_B"/loose
       while IFS= read -r b_line && [ "$B_TOTAL_KB" -gt "$BSIZE_MAX_KB" ]; do
         echo "size-cap (total > ${BSIZE_MAX_KB}KB)|${b_line#* }" >> "$TMPD_B"/cand
         b_sz=$(du -sk "${b_line#* }" 2>/dev/null | cut -f1)

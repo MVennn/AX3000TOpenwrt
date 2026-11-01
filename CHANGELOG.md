@@ -11,6 +11,31 @@
 
 ## [未发布]
 
+### backup-prune.sh 独立审查修复（2026-11-01）
+
+- 对 11-01 入库的 `system/router-health/backup-prune.sh`（当时只经作者代理自测）做
+  独立增量审查，路由器 /tmp 沙箱 74 项断言 + 生产幂等复跑，修三处真问题：
+  1. **size-cap 删反了方向** —— 注释与 MAINTENANCE §5 均为「总量超限先删**最旧**
+     非锚点散文件」，实现 `sort -rn` 实为最新先删（沙箱实测证实：超限时删的是
+     新文件、留的是最旧垃圾）；改为 `sort -n` 最旧先删，删到阈值内即停
+     （根因与规避见 [docs/PITFALLS.md](docs/PITFALLS.md) ⑱）；
+  2. **scratch 建不出来时整个脚本静默猝死** —— phase 1 用 `: >`（POSIX special
+     builtin）初始化临时文件，重定向失败（如 /tmp 写满）会当场退出整个脚本：
+     零日志、phase 2 不执行、退出码 1（沙箱故障注入复现）；改为 `true >`（普通
+     builtin，失败仅该命令失败）+ `mkdir` 显式判失败 log 后跳过 phase 1，phase 2
+     照常执行（根因与规避见 [docs/PITFALLS.md](docs/PITFALLS.md) ⑰）；
+  3. **INT/TERM 陷阱不退出** —— trap 收到信号只清锁不 `exit`，脚本会继续跑完
+     phase 2；trap 动作补 `exit`（busybox ash 实测 EXIT trap 内 `exit` 只跑一次）。
+- 加固两处（行为语义不变）：`b_is_keep` 的 `.keep` 匹配 `grep -q "^…$"` 改
+  `-qxF`（文件名含正则元字符时不再扩大保护面）；头部退出码注释对齐实现
+  （0 正常/无事可做、1 phase-2 根目录缺失、2 锁占用）。
+- 验证与部署 —— `sh -n` + busybox `ash -n` ✓；路由器 /tmp 沙箱 74 断言全绿
+  （stem/锚点/pre-* 前 3/.keep/.inprogress/180min/symlink/空格/换行文件名/锁自愈/
+  退出码/故障注入/幂等复跑，生产目录前后指纹一致）；覆盖前现役脚本已备份路由器
+  /tmp（`bak-20261101-155013`），部署后 md5 复验一致；生产幂等复跑 `/root/backup`
+  10 项 0 删除（692KB）、`/root/final-backup` master rank-1 保护 0 删除，rc=0；
+  cron 未动（仍 `40 4 * * *` 仅一条）。
+
 ### /root/backup 纳入 cron 修剪（2026-11-01）
 
 - 修复备份区修剪的管辖面缺口 —— 现役 `backup-prune.sh`（cron `40 4 * * *`）硬编码只管
