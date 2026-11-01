@@ -11,6 +11,30 @@
 
 ## [未发布]
 
+### /root/backup 纳入 cron 修剪（2026-11-01）
+
+- 修复备份区修剪的管辖面缺口 —— 现役 `backup-prune.sh`（cron `40 4 * * *`）硬编码只管
+  `/root/final-backup`，`/root/backup` 不在管辖内：当天上午刚把 `/root/backup` 从
+  1004KB 修到 692KB，但「改前 cp 一份」的副本只进不出，垃圾会重新堆积（根因与规避
+  见 [docs/PITFALLS.md](docs/PITFALLS.md) ⑯）。现役脚本拉回仓库入库为正本
+  `system/router-health/backup-prune.sh`，扩为两段：phase 2（`/root/final-backup`）
+  原逻辑逐字节未动；phase 1（`/root/backup`）沿用 MAINTENANCE §3 同套阈值 ——
+  `.bak-*` 同 stem 只留最新 1、`pre-*` 目录按 mtime 只留最近 3（不硬编码名单）、
+  `*.apk-new` 全删、总量 >1 MiB 先删最旧非锚点散文件；锚点（sysupgrade.conf、
+  argon 主题包、final-25.12.6-config.tar.gz、uhttpd 证书对、wireless.keep11k、
+  `.keep` 名单、`.inprogress`、180min 内新写入）一律不删
+- 部署与验证 —— 覆盖前现役脚本与 crontab 各备份到路由器 /tmp（`bak-20261101-142957`）；
+  `sh -n` + busybox `ash -n` ✓；/tmp 沙箱自测（同 stem 旧副本、第 4 个及以后 `pre-*`、
+  `*.apk-new` 被清，锚点全保，复跑 0 删除，锁不残留）✓；生产手动跑一轮：
+  `/root/backup` 10 项 0 删除（692KB，上午已清干净、本就合规），`/root/final-backup`
+  行为与改前一致（master rank-1 保护，0 删除）；cron 仍 `40 4 * * *` 且仅一条，
+  其余行未动
+- 文档同步 —— [MAINTENANCE.md](docs/MAINTENANCE.md) §5 止血点标注 cron 扩面（2026-11-01）；
+  [DEPLOY.md](docs/DEPLOY.md) 部署映射表补 `backup-prune.sh` 行，并把 tmp-watch /
+  guardian / memgate / rc.local 四行仍指向 `/root/backup` 同名副本与
+  `tmp-watch.sh.bak-<时间戳>` 的过期回退写法改为「回退源 = git 历史」（当天清理后
+  这些副本已不存在，属登记在案的文档滞后）
+
 ### 设备备份区修剪（2026-11-01）
 
 - 修剪路由器 `/root/backup` —— 1004 KB → 692 KB：按 MAINTENANCE §3/§4 删同 basename

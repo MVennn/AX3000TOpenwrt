@@ -6,7 +6,7 @@
 
 | 目录 | 职责 |
 |---|---|
-| `system/` | 路由器系统面：开机脚本 `rc.local`、已执行的一次性补丁与核心升级脚本（`archive/`）、RAM 型 `/tmp` 的水位监控与自动回收（`router-health/`） |
+| `system/` | 路由器系统面：开机脚本 `rc.local`、已执行的一次性补丁与核心升级脚本（`archive/`）、RAM 型 `/tmp` 的水位监控与自动回收 + 备份区 cron 修剪（`router-health/`） |
 | `guardian/` | 网络守护进程：检测 + 最小化修复，每 5 分钟一轮；含 OOM 拉起前的内存闸门 `memgate.sh`，以及按站点探测的 `dest-guard.sh`（每 10 分钟，默认 dry-run） |
 | `recovery/` | 故障恢复：`recover-now.sh` 主力、Windows 侧触发器（`local-tools/`）、已被取代的旧版（`archive/`） |
 | `docs/` | 文档：索引、规则正本、硬件基线、状态速查、排障手册、Release 说明 |
@@ -34,12 +34,13 @@
 
 | 本地路径 | 路由器上的目标路径 | 被谁调用 | 回退方式 |
 |---|---|---|---|
-| `system/rc.local` | `/etc/rc.local` | 开机（procd 执行） | 改前 cp 一份到 `/root/backup/<对象>-<动作>-<YYYYMMDD>/rc.local`；或用 `system/archive/bootfix.sh` 留下的 `/root/backup/pre-bootfix-<时间戳>/rc.local` 还原 |
+| `system/rc.local` | `/etc/rc.local` | 开机（procd 执行） | 回退源 = git 历史；改前的临时 cp 副本按 MAINTENANCE §5「改完即删」验证后即删（2026-11-01 大扫除后 `/root/backup` 不再长期存改前副本） |
 | `system/mixedport.nft` | `/etc/mixedport.nft` | 开机（`rc.local` 执行 `nft -f`） | 从 `/etc/mixedport.nft.bak-*` 还原；缺失时 LAN 可直连 7890（见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)） |
-| `system/router-health/tmp-watch.sh` | `/etc/router-health/tmp-watch.sh` | cron `*/5 * * * *`（`/bin/ash` 调用）；看 `/tmp` 水位，并在白名单内回收根目录的陈旧文件 | 从 `/etc/router-health/tmp-watch.sh.bak-<YYYYMMDD-HHMMSS>` 还原；**停用回收**：改 conf 的 `TMP_PURGE=0`，或临时 `TMPWATCH_PURGE=0 sh …` 只观察 |
+| `system/router-health/tmp-watch.sh` | `/etc/router-health/tmp-watch.sh` | cron `*/5 * * * *`（`/bin/ash` 调用）；看 `/tmp` 水位，并在白名单内回收根目录的陈旧文件 | 回退源 = git 历史（`.bak-20261023` 副本已于 2026-11-01 清掉）；**停用回收**：改 conf 的 `TMP_PURGE=0`，或临时 `TMPWATCH_PURGE=0 sh …` 只观察 |
 | `system/router-health/tmp-watch.conf` | `/etc/router-health/tmp-watch.conf` | `tmp-watch.sh` 读取阈值与回收开关 | 删文件 → 用脚本内置默认（WARN 24 MB / CRIT 40 MB / `PURGE=1` / 6 小时） |
-| `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 从 `/root/backup/` 下同名备份还原；**停用**：见[「启用与停用守护」](#启用与停用守护) |
-| `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 从 `/root/backup/` 下同名备份还原；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
+| `system/router-health/backup-prune.sh` | `/etc/router-health/backup-prune.sh` | cron `40 4 * * *`（`/bin/ash` 调用）；修剪 `/root/final-backup`（最新 10 个目录、512KB）与 `/root/backup`（MAINTENANCE §3 同套阈值：`.bak-*` 同 stem 最新 1、`pre-*` 最近 3、`*.apk-new` 全删、总量 ≤1 MiB；锚点与最近 3 个 `pre-*` 必保留） | 回退源 = git 历史（2026-11-01 起正本入库）；覆盖前现役脚本备份到 `/tmp/backup-prune.sh.bak-<时间戳>`（重启即清，长期回退走 git） |
+| `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 回退源 = git 历史（`/root/backup` 同名副本已按「改完即删」清掉，2026-11-01）；**停用**：见[「启用与停用守护」](#启用与停用守护) |
+| `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 回退源 = git 历史（同名副本已清，2026-11-01）；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
 | `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
 | `guardian/dest-guard.sh` | `/etc/ShellCrash/dest-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；**默认 dry-run**，只写 `/tmp/ShellCrash/dest-guard.log` | 删 cron 行 + 删文件；已切换过的组在面板里手动选回 |
 | `bulk-guard.sh`（**不在本仓**，来自 `OpenwrtOpsToolkit/openwrt/`） | `/etc/ShellCrash/bulk-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；组名从 `/etc/openwrt-ops/device.conf` 读 | 删 cron 行 + 删文件；已切过的组在面板里手动选回 |
