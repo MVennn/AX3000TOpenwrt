@@ -154,3 +154,14 @@ touched」—— 只要「改前 cp 一份到 /root/backup」的习惯还在，�
 有一个**实际触发该分支**的沙箱用例（构造 mtime 一老一新两个文件，断言删老留新）；
 注释里的方向词（最旧/最新、升序/降序）要和 `sort` 参数逐字对照一遍——`-rn` 是
 降序，`-n` 才是升序。
+
+**⑲ 门禁脚本用 `✓` / `✗` 打结论，GBK 控制台下把自己判成失败。**
+Windows 中文控制台（cp936）跑 `python -I tools/check-docs.py`，最后一行
+`print(f"✓ …")` 抛 `UnicodeEncodeError: 'gbk' codec can't encode character '\u2713'`，
+脚本以**退出码 1** 结束 —— 检查其实全过，门禁却报红；CI 是 UTF-8 所以一直没暴露。
+`✓` U+2713 / `✗` U+2717 / `⚠` U+26A0 都不在 cp936 码表，而 `python -I` 会忽略
+`PYTHONIOENCODING` / `PYTHONUTF8`，「设个别名带环境变量」也不是解法。
+**怎么避**：结论行只用 ASCII（`[OK]` / `[FAIL]` / `[!]`），入口再加
+`if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")` 兜底；
+以后凡是往 stdout 写花字（✓、⚠、→、emoji），先在 `python -I` + 系统默认代码页下跑一遍。
+同一问题首次记录见 ZcodeAIModels 仓「踩坑总汇」第 36 节（跨仓引用，非本仓路径）。

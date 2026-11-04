@@ -19,6 +19,9 @@ import re
 import subprocess
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 VAULT_DIRS = ("vault/",)
 # 私钥类文件名 —— 即使不在 vault/ 下，也不该进库
 SECRET_NAMES = re.compile(
@@ -30,10 +33,10 @@ def git(*args: str) -> str:
     try:
         r = subprocess.run(["git", *args], capture_output=True, text=True, errors="replace")
     except FileNotFoundError:
-        print("✗ 找不到 git 命令 —— CI 镜像里要先装 git（apt-get install -y git）")
+        print("[FAIL] 找不到 git 命令 —— CI 镜像里要先装 git（apt-get install -y git）")
         raise SystemExit(2)
     if r.returncode != 0:
-        print("✗ git %s 失败：%s" % (" ".join(args), (r.stderr or "").strip()))
+        print("[FAIL] git %s 失败：%s" % (" ".join(args), (r.stderr or "").strip()))
         raise SystemExit(2)
     return r.stdout
 
@@ -54,7 +57,7 @@ def main() -> int:
 
     if args.all:
         if git("rev-parse", "--is-shallow-repository").strip() == "true":
-            print("⚠ 浅克隆仓库：--all 只能看到已拉取的提交，历史泄漏检查不完整"
+            print("[!] 浅克隆仓库：--all 只能看到已拉取的提交，历史泄漏检查不完整"
                   "（CI 需 checkout 时 fetch-depth: 0）")
         log = git("log", "--all", "--name-only", "--pretty=format:")
         for f in {x for x in log.split("\n") if x.strip()}:
@@ -63,7 +66,7 @@ def main() -> int:
                 bad.append(norm + "  （出现在历史提交里）")
 
     if bad:
-        print("✗ 发现了不该进版本库的东西：")
+        print("[FAIL] 发现了不该进版本库的东西：")
         for b in sorted(set(bad)):
             print("   ", b)
         print()
@@ -71,7 +74,7 @@ def main() -> int:
         print("  换掉凭据，并从历史里清除（git filter-repo / BFG）。")
         return 1
 
-    print(f"✓ 没有不该进库的东西（暂存 {len(staged)} 个、已跟踪 {len(tracked)} 个文件）")
+    print(f"[OK] 没有不该进库的东西（暂存 {len(staged)} 个、已跟踪 {len(tracked)} 个文件）")
     return 0
 
 
