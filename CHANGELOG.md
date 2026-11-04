@@ -22,6 +22,15 @@
   与实物不符（首行即 `#!/bin/sh`，git 与设备双端核对）；DEPLOY 部署映射表补四行；
   TROUBLESHOOTING「表缺失」行改为已入库，并补整表清空事故的排查与恢复
 
+### P3 清理（2026-11-04 审查遗留项）
+
+- `recovery/archive/verify-fix.sh`：补回 cron 的路径笔误（`/bin/ShellCrash/...` →
+  `/etc/ShellCrash/task/task.sh 106`）
+- `recovery/local-tools/askpass.sh` 注释澄清跨仓调用方（本仓 `fix-router.sh` +
+  ClientTriage `tools/verify-gemini.sh`，后者不在本仓）
+- `system/router-health/health-snapshot.sh` 正本入库（此前只在设备上），DEPLOY 映射表补行；
+  TROUBLESHOOTING 的 cron 参考注明 health-snapshot（本仓）与 daily-ai-check（ShellcrashRules 仓）的出处
+
 ### 2026-11-04 事故记录：crontab 被整表清空
 
 - 现象：重启后 `/etc/crontabs/root` 为 0 字节，守护/看门狗/全部定时任务停摆

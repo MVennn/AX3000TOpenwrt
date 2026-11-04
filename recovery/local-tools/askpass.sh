@@ -7,7 +7,8 @@
 #   3) $HOME/.router-password
 # 都没有就退出并说明怎么办 —— 绝不给出一个错的空口令。
 #
-# 用法：export ROUTER_PASSWORD='...' 后，由 fix-router.sh / verify-gemini.sh 间接调用
+# 用法：export ROUTER_PASSWORD='...' 后，由本仓 fix-router.sh 与兄弟仓 ClientTriage 的
+#       tools/verify-gemini.sh 间接调用（跨仓引用，脚本本体不在本仓）
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

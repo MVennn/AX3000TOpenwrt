@@ -11,7 +11,7 @@ section() { log ""; log "========== $* =========="; }
 
 section "1. crontab 补行"
 if ! grep -q 'task.sh 106' /etc/crontabs/root 2>/dev/null; then
-    echo '*/10 * * * * /bin/ShellCrash/task/task.sh 106 #运行时每10分钟自动保存面板配置' >> /etc/crontabs/root
+    echo '*/10 * * * * /etc/ShellCrash/task/task.sh 106 #运行时每10分钟自动保存面板配置' >> /etc/crontabs/root
     crontab /etc/crontabs/root 2>/dev/null && log "已补回 task.sh 106"
 else
     log "task.sh 106 已在"

@@ -351,6 +351,8 @@ cat /etc/crontabs/root
 #    5 5 * * *    daily-ai-check.sh               （每天 05:05，AI 链路自检）
 #    30 4 * * 0   auto-update.sh                  （每周日 04:30，订阅与规则更新）
 #    45 4 * * 0   apk update                      （每周日 04:45，刷新包索引）
+#    ^ health-snapshot.sh 正本在本仓 system/router-health/；
+#      daily-ai-check.sh 正本在 ShellcrashRules 仓 config/（部署到 /etc/ShellCrash/）
 
 # 3) crond 本身在跑吗
 ps | grep crond; /etc/init.d/cron status
