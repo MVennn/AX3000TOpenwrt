@@ -62,7 +62,7 @@ Make the Router Boring Again.
 
 5. 维护或升级前先停守护，否则守护会把代理复活、妨碍升级（命令见 [docs/DEPLOY.md](docs/DEPLOY.md)）。
 
-> ⚠️ `guardian.sh` 的 shebang 在**第 9 行**（前面 8 行是空行），直接 `./guardian.sh` 不会执行 —— 必须用 `sh` 或 `/bin/ash` 显式调用，crontab 里已经这么写了。
+> ⚠️ `guardian.sh` **首行即 `#!/bin/sh`**；crontab 与文档统一用 `sh` 或 `/bin/ash` 显式调用 —— `scp` 落地可能丢执行位，直接 `./guardian.sh` 不保证能跑。
 
 脚本装到路由器的哪个路径、被谁调用、出事怎么退回去，见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 

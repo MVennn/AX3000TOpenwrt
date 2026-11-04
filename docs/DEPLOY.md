@@ -36,6 +36,10 @@
 |---|---|---|---|
 | `system/rc.local` | `/etc/rc.local` | 开机（procd 执行） | 回退源 = git 历史；改前的临时 cp 副本按 MAINTENANCE §5「改完即删」验证后即删（2026-11-01 大扫除后 `/root/backup` 不再长期存改前副本） |
 | `system/mixedport.nft` | `/etc/mixedport.nft` | 开机（`rc.local` 执行 `nft -f`） | 从 `/etc/mixedport.nft.bak-*` 还原；缺失时 LAN 可直连 7890（见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)） |
+| `system/googlecn.nft` | `/etc/googlecn.nft` | 开机（`rc.local` 执行 `nft -f`）；Google 国内边缘段 TCP → mihomo | 回退源 = git 历史（2026-11-04 起正本入库） |
+| `system/googleroute.nft` | `/etc/googleroute.nft` | 开机（`rc.local` 等 DNS 1053 就绪后 `nft -f`）；守护补载 | 回退源 = git 历史（2026-11-04 起正本入库） |
+| `system/quicguard.nft` | `/etc/quicguard.nft` | 开机（`rc.local` 执行 `nft -f`）；守护补载 | 回退源 = git 历史（2026-11-04 起正本入库；生成快照，正本是下一行的生成器） |
+| `system/quicguard-sync.sh` | `/etc/quicguard-sync.sh` | 人工（订阅更新 / ShellCrash 重启后重生成 `quicguard.nft`） | 回退源 = git 历史（2026-11-04 起正本入库） |
 | `system/router-health/tmp-watch.sh` | `/etc/router-health/tmp-watch.sh` | cron `*/5 * * * *`（`/bin/ash` 调用）；看 `/tmp` 水位，并在白名单内回收根目录的陈旧文件 | 回退源 = git 历史（`.bak-20261023` 副本已于 2026-11-01 清掉）；**停用回收**：改 conf 的 `TMP_PURGE=0`，或临时 `TMPWATCH_PURGE=0 sh …` 只观察 |
 | `system/router-health/tmp-watch.conf` | `/etc/router-health/tmp-watch.conf` | `tmp-watch.sh` 读取阈值与回收开关 | 删文件 → 用脚本内置默认（WARN 24 MB / CRIT 40 MB / `PURGE=1` / 6 小时） |
 | `system/router-health/backup-prune.sh` | `/etc/router-health/backup-prune.sh` | cron `40 4 * * *`（`/bin/ash` 调用）；修剪 `/root/final-backup`（最新 10 个目录、512KB）与 `/root/backup`（MAINTENANCE §3 同套阈值：`.bak-*` 同 stem 最新 1、`pre-*` 最近 3、`*.apk-new` 全删、总量 ≤1 MiB；锚点与最近 3 个 `pre-*` 必保留） | 回退源 = git 历史（2026-11-01 起正本入库）；覆盖前现役脚本备份到 `/tmp/backup-prune.sh.bak-<时间戳>`（重启即清，长期回退走 git） |
@@ -58,8 +62,8 @@
 
 ## 启用与停用守护
 
-守护由 crontab 里的这一行拉起（**必须用 `/bin/ash` 调用**，不能用 `./guardian.sh` ——
-它的 shebang 在**第 9 行**，前面 8 行是空行）：
+守护由 crontab 里的这一行拉起（用 `/bin/ash` 显式调用，不依赖执行位；脚本**首行即
+`#!/bin/sh`** —— `scp` 落地可能丢 `+x`，直接 `./guardian.sh` 不保证能跑）：
 
 ```sh
 */5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护

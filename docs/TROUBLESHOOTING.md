@@ -315,7 +315,7 @@ grep -n 'nft -f' /etc/rc.local
 
 | 观察到的现象 | 原因 | 解法 |
 |---|---|---|
-| 表缺失、`/etc/<name>.nft` 也在 | 文件没入版本库或被删 | `system/mixedport.nft` 已入本仓，按部署映射表投放；`/etc/router-health/reboot-verify.sh` 仍不在本仓（在设备上）—— **待补**。缺失时手工 `nft -f /etc/<name>.nft` |
+| 表缺失、`/etc/<name>.nft` 也在 | 文件没入版本库或被删 | 四张表与生成器均已入本仓（`system/*.nft`、`system/quicguard-sync.sh`，2026-11-04），按部署映射表投放；`/etc/router-health/reboot-verify.sh` 仍不在本仓（在设备上）。缺失时手工 `nft -f /etc/<name>.nft` |
 | 表缺失、源文件在 | 开机加载顺序没走到（`googleroute` 要等 DNS 1053 就绪才加载） | 手工 `nft -f /etc/<name>.nft`；守护每 5 分钟补载三张表（`mixedport` **不在守护的补载清单里**） |
 | 表在、计数器不涨 | 规则没命中（如流量走的不是被拦的网段） | 看 `nft list table inet <name>` 里的 counter 与网段 |
 | `mixedport` 缺失 → 7890 又能被 LAN 连上 | 这张表是 **7890 收口**的实现，丢了就等于开放代理复活 | `nft -f /etc/mixedport.nft`；源文件已入本仓 `system/mixedport.nft`，`rc.local` 开机会加载 |
@@ -339,13 +339,18 @@ grep -n 'nft -f' /etc/rc.local
 # 1) 现在有哪些 cron
 cat /etc/crontabs/root
 
-# 2) 应该有哪几条（参考配置）
-#    * * * * *  start_legacy_wd.sh shellcrash   （每分钟，保守模式看门狗）
-#    */5 * * * * guardian.sh                     （每 5 分钟，网络守护）
-#    */10 * * * * task.sh 106                    （每 10 分钟保存面板选择）
-#    每 30 分钟  health-snapshot.sh              （健康快照）
-#    每天 05:05  daily-ai-check.sh               （AI 链路自检）
-#    每周日 04:30 auto-update.sh                 （订阅与规则更新）
+# 2) 应该有哪几条（参考配置，2026-11-04 与设备实物核对）
+#    * * * * *    start_legacy_wd.sh shellcrash   （每分钟，保守模式看门狗）
+#    */5 * * * *  guardian.sh                     （每 5 分钟，网络守护）
+#    */3 * * * *  bulk-guard.sh                   （每 3 分钟，大流量守卫）
+#    */10 * * * * task.sh 106                     （每 10 分钟保存面板选择）
+#    */10 * * * * refresh-endpoint.sh             （每 10 分钟，WG endpoint）
+#    */30 * * * * health-snapshot.sh              （每 30 分钟，健康快照）
+#    */5 * * * *  tmp-watch.sh                    （每 5 分钟，/tmp 水位）
+#    40 4 * * *   backup-prune.sh                 （每天 04:40，备份修剪）
+#    5 5 * * *    daily-ai-check.sh               （每天 05:05，AI 链路自检）
+#    30 4 * * 0   auto-update.sh                  （每周日 04:30，订阅与规则更新）
+#    45 4 * * 0   apk update                      （每周日 04:45，刷新包索引）
 
 # 3) crond 本身在跑吗
 ps | grep crond; /etc/init.d/cron status
@@ -361,6 +366,7 @@ tail -20 /tmp/ShellCrash/guardian.log | grep -i 'restored'
 | 少了 `start_legacy_wd.sh` 那一行 | **`start.sh stop` 会重写 crontab 并删掉 legacy 看门狗行**（2026-10-20 事故） | 守护每 5 分钟会自动补回；手动：`echo '* * * * * /bin/ash /etc/ShellCrash/starts/start_legacy_wd.sh shellcrash' >> /etc/crontabs/root && crontab /etc/crontabs/root` |
 | 少了 `guardian.sh` 那一行 | 恢复流程没走完，或守护自己也被覆盖了 | 补回 `*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh` |
 | 整张 crontab 空 | 恢复脚本中途失败 | `ash /tmp/recover-now.sh`（第 5 节会从 `/tmp/cron.recover.bak` 还原整张表，并补回两行关键任务） |
+| crontab 被清成 0 字节（**2026-11-04 事故**：重启后即空） | 根因指向 ShellCrash `libs/set_cron.sh` 的 `cronadd()` —— 用 `cat > /etc/crontabs/root` 整表覆盖，无任务时即清空（重启后 syslog 在 tmpfs，无法回看调用栈）；guardian 的 cron lifeline 只补 `start_legacy_wd.sh` 一行，且 guardian 自身只能由 cron 拉起（死锁） | 从 `/etc/crontabs/root.bak-*` 或 `/root/backup/pre-cronrestore-*` 还原并 md5 复验；其余 10 行按上方参考列表补齐。**改完 crontab 用 `mv` 换文件（新 inode）或 `/etc/init.d/cron restart`** —— 原地 `echo >>` 实测不一定触发 crond 重载（2026-11-04 canary 实测）。长期对策（待拍板）：`post-sc-update` 增加 ensure_cron |
 | 代理在 `start.sh stop` 之后又活了 | 守护把进程拉起来了 | **维护前先停守护**：`sed -i '/guardian/d' /etc/crontabs/root && /etc/init.d/cron restart`。另外守护只在 `/tmp/ShellCrash/shellcrash.pid` 存在时拉起 —— `start.sh stop` 会删该 pid 文件，所以停代理时它本来就不该复活；若仍复活，说明 pid 文件还在，先 `rm -f /tmp/ShellCrash/shellcrash.pid` |
 
 **提醒**：`crontab -l` 读的是 `/etc/crontabs/root`。

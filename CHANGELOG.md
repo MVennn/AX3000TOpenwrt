@@ -9,6 +9,28 @@
 
 ---
 
+## [未发布]
+
+### 自建 nft 表与生成器入库 + 刷机保留清单补齐（2026-11-04）
+
+- 入库 `system/quicguard.nft`（设备生成快照）与 `system/quicguard-sync.sh`（生成器正本）、
+  `system/googlecn.nft`、`system/googleroute.nft`。此前只有 `system/mixedport.nft` 在仓，
+  刷机或误删后其余三表无法复原
+- `baseline/sysupgrade.conf` 补保留项：四张自建 nft 表 + `quicguard-sync.sh`、
+  `/etc/router-health/`、`/etc/crontabs/root`（ShellCrash `set_cron.sh` 会整表覆盖 crontab）
+- 文档订正：README / DEPLOY / DOC-RULES 三处「`guardian.sh` shebang 在第 9 行」
+  与实物不符（首行即 `#!/bin/sh`，git 与设备双端核对）；DEPLOY 部署映射表补四行；
+  TROUBLESHOOTING「表缺失」行改为已入库，并补整表清空事故的排查与恢复
+
+### 2026-11-04 事故记录：crontab 被整表清空
+
+- 现象：重启后 `/etc/crontabs/root` 为 0 字节，守护/看门狗/全部定时任务停摆
+- 根因指向：ShellCrash `libs/set_cron.sh` 的 `cronadd()` 用 `cat > /etc/crontabs/root`
+  整表覆盖，无任务时即清空；guardian 的「cron lifeline」只补 `start_legacy_wd.sh` 一行，
+  且 guardian 自身只能由 cron 拉起（死锁）。重启后 syslog 在 tmpfs，无法回看当时调用栈
+- 处置：从 `/etc/crontabs/root.bak-destguard-20261023-*`（11 行、md5 `9185d8ab`）还原并 md5 复验
+- 待定：`post-sc-update` 增加 ensure_cron（控制面变更，待正式拍板）
+
 ## [0.5.0] — 2026-11-01
 
 ### 守卫脚本 bug 奇偶同步（2026-11-01）
