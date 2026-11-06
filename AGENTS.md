@@ -33,6 +33,7 @@
 - `vault/` — 真值配置与备份（gitignored）
 - `tools/` — `check-docs.py`、`check-secrets.py`、`check-vault-not-staged.py`、图标脚本
 - `.work/private-evidence/` — 私有证据，不进库
+- `.work/private-history.bundle` — 私有完整历史镜像，与 private-evidence 同由 `/.work/` 排除，不发布、不恢复进公开分支
 
 ## 4. 验证
 

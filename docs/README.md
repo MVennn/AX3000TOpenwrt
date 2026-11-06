@@ -5,7 +5,7 @@
 
 文档分四类。每篇开头都有一个「一句话」引言块，先看它再决定要不要往下读。
 
-> 本仓是脱敏后的公开参考实现：原始设备证据、内部进度台账与审计报告不随公开仓发布。
+> 本仓是脱敏后的公开参考实现：原始设备证据、内部进度台账、审计报告与 `.work/private-history.bundle` 私有完整历史镜像不随公开仓发布。
 
 ---
 
@@ -51,7 +51,7 @@
 | [UPSTREAM.md](UPSTREAM.md) | 上游行为对照正本：依赖的 OpenWrt / LuCI 行为逐条给出源码路径供核对 |
 | 仓库根 [NOTICE](../NOTICE) | 第三方声明：引用的开源项目、来源、许可证与为何使用 |
 | 仓库根 [LICENSE](../LICENSE) | 许可证全文（MIT），与 [NOTICE](../NOTICE) 的第三方声明配套 |
-| 仓库根 [third-party/](../third-party/README.md) | 随仓分发的上游文件：每个子目录一份 `UPSTREAM.md`（来源 / commit / 许可 / 怎么更新） |
+| 仓库根 [third-party/](../third-party/README.md) | 上游项目索引（本仓不 vendor 源码）；若将来 vendor 上游，每个子目录补一份 `UPSTREAM.md` |
 
 ---
 

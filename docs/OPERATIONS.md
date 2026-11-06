@@ -19,14 +19,15 @@ ssh -i ~/.ssh/owrt_ax3000t root@"$ROUTER_IP"
 
 ## 二、访问入口
 
-把 `10.0.0.1` 换成你自己的路由器 LAN 地址：
+下文 `<REPLACE-ROUTER-LAN-IP>` 代表你的路由器 LAN 地址，按实际设备替换：
 
 | 服务 | 地址 | 说明 |
 |---|---|---|
-| LuCI 管理后台 | `https://10.0.0.1` | 自签证书，浏览器会告警 |
-| mihomo 面板 | `https://10.0.0.1:9999/ui` | 需填控制 API 的 secret |
-| ttyd Web 终端 | `https://10.0.0.1:7681` | 如已安装才存在；凭据自行配置 |
-| 透明代理入口 | `10.0.0.1:7890` | mixed 口；建议用防火墙限制来源 |
+| LuCI 管理后台 | `https://<REPLACE-ROUTER-LAN-IP>` | 自签证书，浏览器会告警 |
+| mihomo 控制 API | `http://<REPLACE-ROUTER-LAN-IP>:9999` | HTTP JSON 接口，需 `Authorization: Bearer <REDACTED-MIHOMO-SECRET>` |
+| zashboard 面板 | `http://<REPLACE-ROUTER-LAN-IP>:9999/ui` | 需填控制 API 的 secret |
+| ttyd Web 终端 | `https://<REPLACE-ROUTER-LAN-IP>:7681` | 如已安装才存在；凭据自行配置 |
+| 透明代理入口 | `<REPLACE-ROUTER-LAN-IP>:7890` | mixed 口；建议用防火墙限制来源 |
 
 ---
 
@@ -34,7 +35,7 @@ ssh -i ~/.ssh/owrt_ax3000t root@"$ROUTER_IP"
 
 ```
 固件            OpenWrt 25.12.x / 内核 6.12.x（以你的设备为准）
-LAN             10.0.0.1/24   br-lan = lan2+lan3+lan4
+LAN             <REPLACE-ROUTER-LAN-IP>/24   br-lan = lan2+lan3+lan4
 WAN             192.168.1.2/24（DHCP）  MTU 1480   ← 双层 NAT 时的示例
 IPv6            <YOUR-IPV6-PD>（运营商 PD 委派，无 NAT66）
 2.4G            信道 13 / HE20 / 20dBm   SSID "<YOUR-SSID>"

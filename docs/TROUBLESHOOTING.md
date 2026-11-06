@@ -152,7 +152,7 @@ sh /etc/ShellCrash/ai-api-check.sh
 |---|---|---|
 | `CrashCore` 进程不存在，但 `/tmp/ShellCrash/shellcrash.pid` 在 | 进程被 OOM 杀了 | `sh /etc/ShellCrash/start.sh start`；再按 [「OOM 杀进程」](#oom-杀进程) 查根因 |
 | 进程不在、pid 文件也不在、30 分钟内无存活记录 | **人为停止**（维护时 `start.sh stop` 会清 pid 文件）—— 守护**故意不拉起**，不妨碍维护 | 维护结束后 `sh /etc/ShellCrash/start.sh start` |
-| 控制 API 返回 `{"message":"Unauthorized"}` | 没带 `Authorization: Bearer <secret>`。ShellCrash 在 04:30 的每周更新里给控制器加了 `secret=` | 补上认证头；真源是 `/etc/ShellCrash/configs/ShellCrash.cfg` 的 `secret=` 行 |
+| 控制 API 返回 `{"message":"Unauthorized"}` | 没带 `Authorization: Bearer <REDACTED-MIHOMO-SECRET>`。ShellCrash 在 04:30 的每周更新里给控制器加了 `secret=` | 补上认证头；真源是 `/etc/ShellCrash/configs/ShellCrash.cfg` 的 `secret=` 行 |
 | 出口 `loc=CN` 或 `cc` 不是 `IN` | 干净出口漂到了被判为 CN 的节点 | 守护会自动复位；手动：`PUT /proxies/<组>` 选 `🇮🇳 印度-优化`。**注意**：印度是三入口共用同一出口 IP，切入口不换 IP |
 | 控制 API 正常，但代理请求超时 | nft 表缺失 / 路由异常 / 核心热加载中 | `nft list tables` 看三张自建表在不在；看 `guardian.log` 的 FIX 记录 |
 | `start.sh start` 报配置校验失败 | 运行配置被截断或 YAML 有重复键 | 看 `/tmp/ShellCrash/error.yaml` 第 1 行 |

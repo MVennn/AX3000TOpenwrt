@@ -18,6 +18,9 @@
 | `tools/check-vault-not-staged.py` | **兜底** —— 忽略规则被改、被 `git add -f` 绕过时，CI 直接红 |
 | 公开仓的历史不可改写 | 一旦提交进去，删文件也删不掉历史 —— 所以只能靠前两道 |
 
+> 同属私有材料的还有 `.work/private-history.bundle`（完整历史镜像）与
+> `.work/private-evidence/`：均由 `/.work/` 排除，**不发布、不恢复进公开分支**。
+
 ```bash
 # 自查
 python tools/check-vault-not-staged.py --all

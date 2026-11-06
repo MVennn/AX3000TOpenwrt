@@ -341,7 +341,7 @@
 
 ### 部署
 
-- `scp guardian/guardian.sh root@10.0.0.1:/etc/ShellCrash/guardian.sh`，备份
+- `scp guardian/guardian.sh root@<REPLACE-ROUTER-LAN-IP>:/etc/ShellCrash/guardian.sh`（历史原文用参考设备 LAN 地址，现按设备值外置口径改为占位符），备份
   `guardian.sh.bak-cleandyn-20261022`
 
 ### 部署验证（2026-10-22）

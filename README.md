@@ -18,7 +18,7 @@ Make the Router Boring Again.
 
 一台小米 AX3000T 刷上 OpenWrt 之后，硬路由之外还叠了一层 ShellCrash + mihomo 透明代理。这个仓库只管**路由器本体这一层**：网络守护、开机自启、故障恢复，以及这些脚本改过的系统状态。
 
-**这是一份脱敏后的参考实现**：脚本保留真实逻辑，设备相关的值（SSID、IPv6 PD 前缀、节点名、出口 IP、本机路径）已替换为占位符或环境变量。原始设备证据、内部进度台账与审计报告**不随公开仓发布**。通用版在兄弟仓 [OpenwrtOpsToolkit](https://github.com/MVennn/OpenwrtOpsToolkit) —— 同一套逻辑，设备相关的值抽成配置项；两边的分工见 [docs/UPSTREAM.md](docs/UPSTREAM.md) §7。
+**这是一份脱敏后的参考实现**：脚本保留真实逻辑，设备相关的值（SSID、IPv6 PD 前缀、节点名、出口 IP、本机路径）已替换为占位符或环境变量。原始设备证据、内部进度台账、审计报告与 `.work/private-history.bundle` 私有完整历史镜像**不随公开仓发布**。通用版在兄弟仓 [OpenwrtOpsToolkit](https://github.com/MVennn/OpenwrtOpsToolkit) —— 同一套逻辑，设备相关的值抽成配置项；两边的分工见 [docs/UPSTREAM.md](docs/UPSTREAM.md) §7。
 
 **这个仓库不管**：ShellCrash 与 mihomo 本体、订阅内容、分流规则与 geosite 规则集、LuCI 控制台、AI 模型接入。它们各有归属，这里只引用，不复制。
 
@@ -116,7 +116,7 @@ assets/         logo 与社交预览
 |---|---|
 | [**OpenWrt**](https://openwrt.org/) | 固件本体；`/etc/rc.local`、`fw4`/`nft`、`uci`、busybox 工具链 |
 | [**LuCI**](https://github.com/openwrt/luci) | 设备上的 Web 管理界面 —— 本仓把它当**应急入口** |
-| [**ShellCrash**](https://github.com/nekoii/shellcrash) | 代理配置生成与运行时（`/etc/ShellCrash/`、`start.sh`、`task/task.sh`） |
+| [**ShellCrash**](https://github.com/juewuy/ShellCrash) | 代理配置生成与运行时（`/etc/ShellCrash/`、`start.sh`、`task/task.sh`） |
 | [**mihomo**](https://github.com/MetaCubeX/mihomo) | 代理内核（`CrashCore.raw`）、控制 API `:9999`、Redir 透明代理 `:7892` |
 | [**MetaCubeX geosite / geoip**](https://github.com/MetaCubeX/meta-rules-dat) | 分流规则集来源 |
 | [**art-design-pro**](https://github.com/Daymychen/art-design-pro) | 设计令牌来源（MIT）；本仓只用其中色值做对比度基准，非代码依赖 |
