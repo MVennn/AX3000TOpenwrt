@@ -64,9 +64,9 @@ Release 说明文件名、发版 tag，三处**必须一致**。
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | **`0.5.0`** |
-| 日期 | **2026-11-01** |
-| 性质 | 功能更新：AI API 数据面探活；备份修剪三修与 /root/backup 扩管；tmp-watch 迁 tmpfs |
+| 当前版本 | **`0.6.0`** |
+| 日期 | **2026-11-06** |
+| 性质 | 功能更新：自建 nft 表与生成器、health-snapshot 正本入库；P3 清理与门禁 GBK 自毁修复 |
 
 本版条目见 [CHANGELOG.md](../CHANGELOG.md) 的 `## [0.5.0]` 段，
 Release 说明见 [release-notes/0.5.0.md](release-notes/0.5.0.md)，tag 为 `v0.5.0`。
