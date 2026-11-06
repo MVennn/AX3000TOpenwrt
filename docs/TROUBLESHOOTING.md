@@ -339,8 +339,9 @@ grep -n 'nft -f' /etc/rc.local
 # 1) 现在有哪些 cron
 cat /etc/crontabs/root
 
-# 2) 应该有哪几条（参考配置，2026-11-04 与设备实物核对）
+# 2) 应该有哪几条（参考配置，2026-11-04 与设备实物核对；2026-11-06 补 traffic-stats 行）
 #    * * * * *    start_legacy_wd.sh shellcrash   （每分钟，保守模式看门狗）
+#    * * * * *    traffic-stats.sh                    （每分钟，流量归因采样）
 #    */5 * * * *  guardian.sh                     （每 5 分钟，网络守护）
 #    */3 * * * *  bulk-guard.sh                   （每 3 分钟，大流量守卫）
 #    */10 * * * * task.sh 106                     （每 10 分钟保存面板选择）
@@ -366,6 +367,7 @@ tail -20 /tmp/ShellCrash/guardian.log | grep -i 'restored'
 | 观察到的现象 | 原因 | 解法 |
 |---|---|---|
 | 少了 `start_legacy_wd.sh` 那一行 | **`start.sh stop` 会重写 crontab 并删掉 legacy 看门狗行**（2026-10-20 事故） | 守护每 5 分钟会自动补回；手动：`echo '* * * * * /bin/ash /etc/ShellCrash/starts/start_legacy_wd.sh shellcrash' >> /etc/crontabs/root && crontab /etc/crontabs/root` |
+| 少了 `traffic-stats.sh` 那一行 | `start.sh stop` / 订阅重写 crontab 时被冲掉（**2026-11-02 10:14 起丢了 4 天**：stats 目录没有新文件，脚本手动跑正常） | 守护每 5 分钟自动补回（仅当 `/etc/ShellCrash/traffic-stats.sh` 存在），日志关键字 `FIX: restored traffic-stats cron line`；手动：`echo '* * * * * /bin/ash /etc/ShellCrash/traffic-stats.sh #流量归因:按策略组+域名每分钟采样' >> /etc/crontabs/root && crontab /etc/crontabs/root` |
 | 少了 `guardian.sh` 那一行 | 恢复流程没走完，或守护自己也被覆盖了 | 补回 `*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh` |
 | 整张 crontab 空 | 恢复脚本中途失败 | `ash /tmp/recover-now.sh`（第 5 节会从 `/tmp/cron.recover.bak` 还原整张表，并补回两行关键任务） |
 | crontab 被清成 0 字节（**2026-11-04 事故**：重启后即空） | 根因指向 ShellCrash `libs/set_cron.sh` 的 `cronadd()` —— 用 `cat > /etc/crontabs/root` 整表覆盖，无任务时即清空（重启后 syslog 在 tmpfs，无法回看调用栈）；guardian 的 cron lifeline 只补 `start_legacy_wd.sh` 一行，且 guardian 自身只能由 cron 拉起（死锁） | 从 `/etc/crontabs/root.bak-*` 或 `/root/backup/pre-cronrestore-*` 还原并 md5 复验；其余 10 行按上方参考列表补齐。**改完 crontab 用 `mv` 换文件（新 inode）或 `/etc/init.d/cron restart`** —— 原地 `echo >>` 实测不一定触发 crond 重载（2026-11-04 canary 实测）。长期对策（待拍板）：`post-sc-update` 增加 ensure_cron |

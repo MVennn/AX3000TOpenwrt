@@ -23,7 +23,7 @@
 
 | 事项 | 载体 | 具体做什么 |
 |---|---|---|
-| **网络守护** | [`guardian/guardian.sh`](../guardian/guardian.sh) | 代理进程存活、nft 表补载、策略组出口复原、ShellCrash「静默回退」自愈、`/tmp` 内存盘水位、OOM 拉起前内存闸门；每 5 分钟一轮，只做「检测 + 最小化修复」 |
+| **网络守护** | [`guardian/guardian.sh`](../guardian/guardian.sh) | 代理进程存活、nft 表补载、策略组出口复原、ShellCrash「静默回退」自愈、`/tmp` 内存盘水位、OOM 拉起前内存闸门、cron 行自愈（legacy 看门狗 + 流量归因采样）；每 5 分钟一轮，只做「检测 + 最小化修复」 |
 | **开机自启与运行时目录兜底** | [`system/rc.local`](../system/rc.local) | tmpfs 上的 `/tmp/ShellCrash` 重建、`/var` 软链目标目录重建、四张自建 nft 表开机加载、开机后自动验收派发 |
 | **站点健康守卫** | [`guardian/dest-guard.sh`](../guardian/dest-guard.sh) | 按「站点 → 策略组」用真实 URL 探测（X / GitHub / B站 / YouTube / 通用）；默认 dry-run 只写日志，启用后在候选白名单内切换（30 分钟冷却），不碰全局选择器 |
 | **故障恢复** | [`recovery/recover-now.sh`](../recovery/recover-now.sh) | 「WiFi 连上了但没网」「DNS 解析全失败」「代理离线」的成套恢复；`check` 参数只诊断、不改任何东西 |

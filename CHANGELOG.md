@@ -9,6 +9,25 @@
 
 ---
 
+## [未发布]
+
+### 守护补回流量归因采样 cron 行（2026-11-06）
+
+- `guardian/guardian.sh` 在原有 legacy 看门狗 cron 自愈块之后、`exit 0` 之前新增一段：
+  `/etc/ShellCrash/traffic-stats.sh` 存在、而 `/etc/crontabs/root` 里没有它的条目时，追加
+  `* * * * * /bin/ash /etc/ShellCrash/traffic-stats.sh #流量归因:按策略组+域名每分钟采样`，
+  再 `crontab /etc/crontabs/root` 重载，日志写 `FIX: restored traffic-stats cron line`。
+  脚本文件本身不存在时**不补**，避免每 5 分钟刷一条失败记录
+- 为什么：**2026-11-02 10:14 起这一行丢失，流量归因采集中断 4 天**（stats 目录没有新文件，
+  脚本手动跑正常），直到 2026-11-06 人工才发现。guardian 本来就承担 legacy 看门狗行的
+  cron 自愈，这次把流量采集纳入同一套
+- 验证：`grep traffic-stats /etc/crontabs/root` 应看到该行；删掉这一行后手动跑一次
+  `sh /etc/ShellCrash/guardian.sh`，`/tmp/ShellCrash/guardian.log` 出现
+  `FIX: restored traffic-stats cron line`，再 `grep` 确认 cron 行已回来
+- 版本判断：新增一个守护项（使用者可感知的新能力）→ 属**功能更新**，发版时进次版本
+  `0.6.0` → `0.7.0`；本次不发版、不动 tag，按 [docs/VERSIONING.md](docs/VERSIONING.md) §5 先记在
+  `[未发布]` 段
+
 ## [0.6.0] — 2026-11-06
 
 ### 门禁脚本 GBK 控制台自毁修复（2026-11-04）
