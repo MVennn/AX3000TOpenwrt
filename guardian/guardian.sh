@@ -477,4 +477,13 @@ if ! grep -q 'start_legacy_wd.sh' /etc/crontabs/root 2>/dev/null; then
     crontab /etc/crontabs/root 2>/dev/null
     log "FIX: restored legacy watchdog cron line"
 fi
+
+# 流量归因采样（OpenwrtOpsToolkit/traffic-stats.sh）：这一行同样会被 start.sh
+# stop / 订阅重写 crontab 冲掉 —— 2026-11-02 10:14 起停了 4 天到 11-06 才发现，
+# 期间「机场流量被谁吃了」是空白。脚本不在就不补，免得每 5 分钟刷一条失败记录。
+if [ -f /etc/ShellCrash/traffic-stats.sh ] && ! grep -q 'traffic-stats.sh' /etc/crontabs/root 2>/dev/null; then
+    echo '* * * * * /bin/ash /etc/ShellCrash/traffic-stats.sh #流量归因:按策略组+域名每分钟采样' >> /etc/crontabs/root
+    crontab /etc/crontabs/root 2>/dev/null
+    log "FIX: restored traffic-stats cron line"
+fi
 exit 0
