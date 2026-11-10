@@ -165,3 +165,29 @@ Windows 中文控制台（cp936）跑 `python -I tools/check-docs.py`，最后�
 `if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")` 兜底；
 以后凡是往 stdout 写花字（✓、⚠、→、emoji），先在 `python -I` + 系统默认代码页下跑一遍。
 同一问题首次记录见 ZcodeAIModels 仓「踩坑总汇」第 36 节（跨仓引用，非本仓路径）。
+
+**⑳ 日志告警「每轮都报当前状态」把 512 KiB 环形缓冲冲成只覆盖 3.8 小时。**
+两层噪音叠在一起：① `cronloglevel` 漂到 5，crond 自身 stderr（`wakeup dt=10`、
+子进程退出）每 10 秒一条 `cron.err`，占改前日志 **97.55% 字节**；② keepaudit 巡检把
+`/etc/ShellCrash` 顶层的 `.bak-*` 回滚副本、`.disabled` 禁用件、隐藏临时文件全算成
+「未在保留清单」，42 个漏项里 37 个是派生件，且每 30 分钟**无条件重报**同一条
+1,000+ B 超长清单。**根因**：两处都是「把状态当事件报」—— crond 把每轮 wakeup
+当日志，keepaudit 把稳定不变的漏项集合当新告警，都没做幂等。
+**怎么避**：状态类告警必须幂等 —— crond loglevel 保持 9（业务告警一律显式
+`logger -t`，不靠 crond stderr）；巡检先按后缀 `case` 排除派生件，再把漏项集合
+存 `/tmp/.keepaudit.state`，仅当**集合相对上次变化**时才 `logger -t keepaudit`。
+判据写「变化才报」而不是「每轮算一遍就报」；也别用加大 `log_size` 掩盖刷屏 ——
+缓冲是 tmpfs，加大直接吃内存、增加闪存写入；降噪后实测 138,063 B/h → 891 B/h，
+覆盖时长从 3.8 小时拉到约 6 天。
+**㉑ 升完内核 `start.sh restart` 后立刻查 `/version`，空响应被 `|| true` 吞掉，验收假绿。**
+2026-11-10 11:06 执行 `upgrade-core-to-v1.19.33.sh`：7 步都打印了、二进制 `-v` 也报
+`v1.19.33`，唯独 7/7 的运行态 `curl /version` 留了一行空白（脚本里 `curl … || true`
+把失败吞了），随后几秒 SSH 提示符才冒出 `rules-porn:` / `rules-cnip:` /
+`[reorder-groups]` 回显。**根因**：`start.sh` 的 `start_l` 分支是 `bfstart && … && afstart &`
+**后台拉起**，核心进程写完 pid 时外部控制 API（`:9999`）还没监听；`clash_modify.sh`
+/ `sub-sync.sh` / `reorder-groups.sh` 这些启动钩子也是异步跑完才把规则回显吐到终端。
+单次 `sleep 3` 不够，且「有 `-v` 就算成功」只验了文件、没验运行态。
+**怎么避**：升级脚本的运行态验收改成「最多 20 秒轮询 `curl /version`，响应必须含
+目标版本号」，超时显式 `!! 未就绪` 告警，不再 `|| true` 静默；二进制 `-v` 与运行态
+`{"version":"…"}` 两个判据都要有。看到晚到的 `rules-*` 回显不是升级失败，是启动钩子
+按 Design 补完规则，复验 `grep -c "^  - name:"` = 31 / `RULE-SET,cn` 命中即可。

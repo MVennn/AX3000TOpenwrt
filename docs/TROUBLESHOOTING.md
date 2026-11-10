@@ -1,6 +1,6 @@
 # 排障手册
 
-> **一句话**：八个高频现象，每个按「现象 → 排查步骤 → 原因 / 解法」三段写，
+> **一句话**：九个高频现象，每个按「现象 → 排查步骤 → 原因 / 解法」三段写，
 > 排查步骤全是**能在路由器上直接粘的命令**。
 
 **节标题就是检索词** —— 遇到什么就搜什么，不用通读。
@@ -376,3 +376,73 @@ tail -20 /tmp/ShellCrash/guardian.log | grep -i 'restored'
 **提醒**：`crontab -l` 读的是 `/etc/crontabs/root`。
 busybox 的 crond **不支持 `@reboot`** —— 需要开机执行的任务要靠
 「标记文件 + `rc.local` 派发」（`/etc/router-health/reboot-verify.sh` 就是这个机制）。
+
+---
+
+## 日志刷屏 / 环形缓冲只剩几小时
+
+### 现象
+
+`logread` 里几乎全是 `cron.err crond[...]: wakeup dt=10` 这类 crond 自身 stderr，
+或者每 30 分钟一条上千字节的 `keepaudit WARN not-in-keep-list:`，真正有用的告警
+（hostapd / guardian / dropbear）被冲出 512 KiB 环形缓冲，回头查事故只剩 3–4 小时。
+
+### 排查步骤
+
+```sh
+# 1) 量化噪音占比（行数 / 字节）
+logread | grep -c 'cron.err'
+logread | wc -c
+logread | grep 'keepaudit' | tail -3
+
+# 2) crond 实际 loglevel 与 UCI 值是否一致
+ps | grep '[c]rond'
+uci get system.@system[0].cronloglevel
+uci get system.@system[0].log_size
+
+# 3) 当天还在不在涨
+logread | grep "$(date '+%b %e')" | grep -c 'cron.err'
+```
+
+### 原因 / 解法
+
+| 观察到的现象 | 原因 | 解法 |
+|---|---|---|
+| `cron.err` 每 10 秒一条、占 97%+ 字节 | `cronloglevel` 漂到 5，crond 自身 stderr（wakeup / 子进程退出）全量进 syslog | `uci set system.@system[0].cronloglevel=9 && uci commit system && /etc/init.d/cron restart`；**告警一律显式 `logger -t`**，不靠 crond stderr，恢复 9 不吞业务告警 |
+| `keepaudit WARN` 每 30 分钟重报同一长清单 | 巡检把 `.bak-*` / `.disabled` / 隐藏临时文件全算漏项，且每轮无条件重报 | `health-snapshot.sh` 的 keepaudit 段先 `case` 排除派生件后缀，再用 `/tmp/.keepaudit.state` 比对集合，只在**集合变化**时 `logger -t keepaudit` |
+| 想靠加大 `log_size` 留更久 | 512 KiB 是 tmpfs 环形缓冲，加大直接吃内存 / 增加闪存写入 | 不加大缓冲，降噪即可：实测写入 138,063 B/h → 891 B/h，512 KiB 覆盖从 3.8 小时拉到约 6 天 |
+---
+
+## 升完内核后重启验收空响应 / 规则回显晚到
+
+### 现象
+
+`start.sh restart` 跑完升级脚本，7/7 验收里 `curl /version` 只留一行空白，
+过几秒才在 `#` 提示符后冒出 `rules-porn:`、`rules-cnip:`、`[reorder-groups]`；
+误以为「升级没生效」或「规则被重置」。
+
+### 排查步骤
+
+```sh
+# 1) 二进制与运行态分开验（两个都要是目标版本）
+/etc/ShellCrash/CrashCore.upx -v
+grep "^core_v=" /etc/ShellCrash/configs/ShellCrash.cfg
+SECRET=$(sed -n "s/^secret=//p" /etc/ShellCrash/configs/ShellCrash.cfg | head -1)
+curl -s -m 5 -H "Authorization: Bearer $SECRET" http://127.0.0.1:9999/version
+
+# 2) 规则有没有被打回基础配置
+grep -c "^  - name:" /tmp/ShellCrash/config.yaml   # 应为 31
+grep -c "RULE-SET,cn" /tmp/ShellCrash/config.yaml  # 应 >=1
+ps | grep -c "[C]rashCore"                          # 应为 1
+
+# 3) 启动钩子异步回显是正常路径
+tail -5 /etc/ShellCrash/logs/sub-sync.log
+```
+
+### 原因 / 解法
+
+| 观察到的现象 | 原因 | 解法 |
+|---|---|---|
+| `/version` 空响应被脚本吞掉 | `start_l` 分支 `afstart &` 后台拉起，`:9999` 晚几秒才监听；`curl … \|\| true` 把失败静默 | 升级脚本验收段改「最多 20 秒轮询 + 响应含 `v1.19.33`」，超时显式告警；根因见 [PITFALLS.md](PITFALLS.md) ㉑ |
+| 提示符后晚到 `rules-*` / `reorder-groups` 回显 | `clash_modify.sh` / `sub-sync.sh` / `reorder-groups.sh` 随启动异步跑完才吐输出 | 不是失败也不是重复升级；按上面 2) 复验 31 组 / `RULE-SET,cn` / 核心进程数即可 |
+| 只看了 `-v` 就宣布升级成功 | 那只验文件，没验运行态 | 二进制 `-v`、`cfg core_v`、`/version` 三处一致才算完成 |

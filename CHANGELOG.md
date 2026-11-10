@@ -11,6 +11,60 @@
 
 ## [未发布]
 
+### 设备内核升级到 mihomo v1.19.33（2026-11-10）
+
+- 设备维护者在维护窗口用一份纯 LF 预置脚本（设备 `/tmp/` 留档；本仓 `.work/` 属 gitignore 的内部工作区，不随公开仓发布）执行：
+  `curl` 拉作者 `update` 分支 `bin/meta/clash-linux-arm64.upx` → 15,007,192 B 与
+  `-v` 双校验 → 备份 `/root/CrashCore.upx.bak-v1.19.28-20261110`（10,283,068 B）→
+  同目录 `cp` + `sync` + `mv -f` 原子替换 `CrashCore.upx` → `sed` 同步 `core_v=v1.19.33`
+  → `start.sh restart`（`stop` 里 `killall CrashCore`，`start` 重建 `/tmp/ShellCrash/CrashCore` 软链）。
+- 为什么：ShellCrash 1.9.5beta3 的 upx 通道与三档菜单早已在位，`update/bin/version`
+  的 `meta_v` 已是 `v1.19.33`，设备二进制却停在 10/20 装入的 `v1.19.28`；
+  `custcorelink` 钉的就是该 `.upx` URL，升级后与 `core_v` 一致，自动更新不会再拉回旧版。
+- 验证（11:09 设备只读复验）：`CrashCore.upx -v` = `Mihomo Meta v1.19.33 linux arm64
+  with go1.27.3`、15,007,192 B；`core_v=v1.19.33`；运行态 `/version` =
+  `{"meta":true,"version":"v1.19.33"}`；核心进程数 1、`/tmp` 下载临时件与 `.tmp` 均已清理；
+  31 个分组 / `RULE-SET,cn` 未变、探针 cron 在、`stats/2026-11-10.tsv` 3,265 B 仍在写，
+  `uptime` 未重启整机。
+- 连带：预置脚本 7/7 验收段把 `sleep 3` 单次 `curl` 改为最多 20 秒轮询且判据必须含
+  `v1.19.33`（`start.sh` 的 `start_l` 分支是 `afstart &` 后台拉起，controller 晚几秒才监听，
+  首次执行时 `/version` 空响应被 `|| true` 吞掉留了一行空白）；
+  [docs/OPERATIONS.md](docs/OPERATIONS.md) §3 当前值、[docs/HARDWARE.md](docs/HARDWARE.md) §3
+  时点指引同步，本地与设备 `/tmp/` 留档脚本双端 md5 一致（`b099bef4d268cb564257207333a2a260`）。
+- 版本判断：设备二进制与配置更新，非本仓脚本功能变更，不发版、不动版本号，按
+  [docs/VERSIONING.md](docs/VERSIONING.md) §5 记在 `[未发布]` 段。
+
+### 日志降噪：keepaudit 幂等告警与派生件排除（2026-11-10）
+
+- `system/router-health/health-snapshot.sh` 的 keepaudit 段：巡检
+  `/etc/ShellCrash` 顶层时先用 `case` 跳过派生件（`CrashCore.raw|gz|upx`、
+  `meta-backup`、`GeoSite.dat` / `GeoIP.dat`、`ui`、隐藏 `.*`、`*.bak*`、
+  `*.disabled` / `*.old` / `*.tmp` / `*.swp`），漏项集合存
+  `/tmp/.keepaudit.state`，只在**集合相对上次发生变化**时才
+  `logger -t keepaudit`；24 字段快照主体字节不变。
+- 为什么：原口径把 42 个漏项里的 37 个派生件全算进去，每 30 分钟重报一条
+  1,000+ B 超长清单，是 `cron.err` 降噪后剩余写入的大头；漏项集合稳定时
+  反复告警属于「报当前值」而非「报变化」。
+- 验证：稳态连跑两次零新增；造 `zz-tune-probe.sh` 立刻可见、删掉后集合恢复
+  也可见；隔夜 9 小时真实 cron 零新增，`/tmp/.keepaudit.state` 存活且稳定。
+- 版本判断：属缺陷修复 / 内部行为修正，不发版、不动版本号，按
+  [docs/VERSIONING.md](docs/VERSIONING.md) §5 记在 `[未发布]` 段。
+
+### 设备日志配置恢复：cronloglevel 漂移回正（2026-11-10）
+
+- 设备 `/etc/config/system` 的 `cronloglevel` 实测漂到 `5`（记忆正本与基线均为
+  `9`），`conloglevel` 也由 `8` 变 `5`；经 `uci set … cronloglevel=9 &&`
+  `uci commit system` 与 `/etc/init.d/cron restart` 恢复，`crond -l 9` 实证。改前备份
+  `/root/system.config.bak-router-log-tune-20261109`。`log_size=512` / `log_file=/overlay/log/messages` 未动。
+- 为什么：level 5 让 crond 自身 stderr（`wakeup dt=10` 等）每 10 秒一条灌进
+  syslog，占改前日志 97.55% 字节，把 512 KiB 环形缓冲压到只覆盖 3.8 小时；
+  恢复 9 后**业务告警不受影响**（45 行有效日志全走显式 `logger -t`）。
+- 验证：隔夜 9 小时 11-10 当天新增 `cron.err` = 0，`/overlay/log/messages`
+  增速 891 B/h（改前 138,063 B/h，降幅 99.4%），当日 00:00–09:00 健康快照
+  每半小时一条、24 字段完整。
+- 版本判断：设备当前配置回正，非使用者可感知的新能力，不进位；
+  [docs/OPERATIONS.md](docs/OPERATIONS.md) §3 同步当前值。
+
 ### 守护补回流量归因采样 cron 行（2026-11-06）
 
 - `guardian/guardian.sh` 在原有 legacy 看门狗 cron 自愈块之后、`exit 0` 之前新增一段：

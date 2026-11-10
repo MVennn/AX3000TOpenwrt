@@ -43,10 +43,14 @@ IPv6            <YOUR-IPV6-PD>（运营商 PD 委派，无 NAT66）
 加密            psk2 + PMF optional
 DHCP 池         10.0.0.25 – .224 / 12h
 防火墙          wan input=REJECT / forward=REJECT；sw+hw offload 按需
-代理            ShellCrash + mihomo，Redir 模式，透明代理 7890/7892
+代理            ShellCrash + mihomo v1.19.33（2026-11-10 升级），Redir 模式，透明代理 7890/7892
                  控制 API 127.0.0.1:9999（带 secret）
 DNS             LAN 客户端 53 端口被 nft 劫持到 mihomo :1053（fake-ip）
                  dnsmasq 只服务路由器自身
+日志            cronloglevel=9 / conloglevel=5 / log_size=512 KiB（环形）
+                 log_file=/overlay/log/messages（2026-11-10 实测当前值）
+内核            /etc/ShellCrash/CrashCore.upx 15,007,192 B / v1.19.33
+                 core_v=v1.19.33；旧核备份 /root/CrashCore.upx.bak-v1.19.28-20261110
 ```
 
 ### 策略组
@@ -69,7 +73,7 @@ DNS             LAN 客户端 53 端口被 nft 劫持到 mihomo :1053（fake-ip�
 | 包 | 谁在用 | 缺了会怎样 |
 |---|---|---|
 | **ShellCrash** | 提供 `/etc/ShellCrash/` 运行时与 `start.sh` / `task/task.sh` / `starts/start_legacy_wd.sh` | 守护与恢复脚本全部无从下手 |
-| **mihomo 核心** | 落地为 `/etc/ShellCrash/CrashCore.raw` | 代理起不来，透明代理与 DNS 劫持都没有 |
+| **mihomo 核心** | 落地为 `/etc/ShellCrash/CrashCore.upx`（版本分支不同也可能是 `CrashCore.raw`） | 代理起不来，透明代理与 DNS 劫持都没有 |
 | `curl` | 守护探测控制 API、恢复脚本测出口 | 探测与连通性校验静默失效 |
 | `nft` | fw4 自带；本仓直接调用它加载自建表 | 自建表加载不了（DNS 劫持与 7890 收口都失效） |
 | `awk` / `sed` / `grep` | 读配置、改 crontab、解析输出 | 脚本中途失败 |
@@ -105,6 +109,13 @@ tail -20 /tmp/ShellCrash/guardian.log
 tail -20 /tmp/ShellCrash/dest-guard.log
 tail -10 /etc/router-health/tmp-usage.log
 tail -20 /etc/ShellCrash/logs/auto-update.log
+
+# 6) 日志降噪是否生效（2026-11-10 调优后）
+logread | grep -c 'cron.err'                      # 当天应零新增，只剩历史残留
+logread | grep 'keepaudit' | tail -5             # 同一漏项集合只应出现一次
+uci get system.@system[0].cronloglevel           # 应为 9
+ps | grep '[c]rond'                              # 应带 -l 9
+cat /tmp/.keepaudit.state                         # 稳定漏项集合，每 30 分钟刷新但不重报
 ```
 
 ### 一键重启 + 自动验收（醒来后想验证重启时用这个）

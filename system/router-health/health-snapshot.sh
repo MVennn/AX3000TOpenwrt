@@ -17,13 +17,23 @@ done
 LOG="$DIR/health-$(date +%Y%m%d).log"
 
 # --- 保留清单覆盖巡检: /etc/ShellCrash 是逐项枚举的, 新增顶层文件不会自动进清单 ---
-# 漏一条 = 刷机后该文件真丢。这里每次快照都查一遍, 有漏项就记进快照。
+# 漏一条 = 刷机后该文件真丢。只盯「现役脚本/配置」这一层: 回滚副本(.bak*)、
+# 隐藏临时(.*)、禁用件、大二进制缓存都不该进刷机保留清单, 一律排除; 否则每轮
+# WARN 里几十个 .bak 会把真漏项淹掉, 等于每 30 分钟往 syslog 刷一屏无效告警。
+# 去重降频: 集合存 /tmp(tmpfs, 不写闪存); 只在集合「变化」时 logger —— 长期稳定
+# 的漏项不再重复刷同一条, 新出现/消失的漏项立刻可见, 审计价值不丢。
 KEEPMISS=""
 for e in $(ls -A /etc/ShellCrash 2>/dev/null); do
-  case "$e" in CrashCore.raw|CrashCore.gz|CrashCore.upx|meta-backup|GeoSite.dat|GeoIP.dat|ui) continue ;; esac
+  case "$e" in CrashCore.raw|CrashCore.gz|CrashCore.upx|meta-backup|GeoSite.dat|GeoIP.dat|ui|.*|*.bak*|*.disabled|*.old|*.tmp|*.swp) continue ;; esac
   grep -q "^/etc/ShellCrash/$e$" /etc/sysupgrade.conf 2>/dev/null || KEEPMISS="$KEEPMISS $e"
 done
-[ -n "$KEEPMISS" ] && { logger -t keepaudit "WARN not-in-keep-list:$KEEPMISS" 2>/dev/null; echo "[WARN] 未进保留清单的 ShellCrash 顶层文件:$KEEPMISS" >&2; }
+KEEPSTATE=/tmp/.keepaudit.state
+KEEPPREV=$(cat "$KEEPSTATE" 2>/dev/null)
+if [ -n "$KEEPMISS" ] && [ "$KEEPMISS" != "$KEEPPREV" ]; then
+  logger -t keepaudit "WARN not-in-keep-list:$KEEPMISS" 2>/dev/null
+  echo "[WARN] 未进保留清单的 ShellCrash 顶层文件:$KEEPMISS" >&2
+fi
+printf '%s' "$KEEPMISS" > "$KEEPSTATE" 2>/dev/null
 
 # --- 保留 7 天 ---
 find "$DIR" -maxdepth 1 -name "health-*.log" -mtime +7 -delete 2>/dev/null
