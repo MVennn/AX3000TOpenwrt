@@ -46,4 +46,4 @@
 
 - `third-party/` 是 vendored 上游，一个字节都不动。
 - 通用版在兄弟仓 `OpenwrtOpsToolkit`：同一套逻辑、设备值抽成配置项；两边改动要对齐，分工见 `docs/UPSTREAM.md` §7。
-- 本仓只管路由器本体：ShellCrash / mihomo 配置在 `ShellcrashRules`，控制台在 `OpenwrtConsole`，网关在 `ZcodeAIModels`。
+- 本仓只管路由器本体：ShellCrash / mihomo 配置在 `ShellcrashRules`，控制台在 `OpenwrtConsole`，网关在 `ModelBus`（原 ZcodeAIModels）。

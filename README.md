@@ -16,7 +16,7 @@ Make the Router Boring Again.
 
 ## 这是什么
 
-一台小米 AX3000T 刷上 OpenWrt 之后，硬路由之外还叠了一层 ShellCrash + mihomo 透明代理。这个仓库只管**路由器本体这一层**：网络守护、开机自启、故障恢复，以及这些脚本改过的系统状态。
+一台小米 AX3000T 刷上 OpenWrt 之后，硬路由之外还叠了一层 ShellCrash + mihomo 透明代理。这个仓库只管**路由器本体这一层**：网络守护、开机自启、健康巡检、故障恢复，以及这些脚本改过的系统状态。
 
 **这是一份脱敏后的参考实现**：脚本保留真实逻辑，设备相关的值（SSID、IPv6 PD 前缀、节点名、出口 IP、本机路径）已替换为占位符或环境变量。原始设备证据、内部进度台账、审计报告与 `.work/private-history.bundle` 私有完整历史镜像**不随公开仓发布**。通用版在兄弟仓 [OpenwrtOpsToolkit](https://github.com/MVennn/OpenwrtOpsToolkit) —— 同一套逻辑，设备相关的值抽成配置项；两边的分工见 [docs/UPSTREAM.md](docs/UPSTREAM.md) §7。
 
@@ -49,18 +49,22 @@ Make the Router Boring Again.
    ash /tmp/recover-now.sh           # 完整修复
    ```
 
-4. 把守护脚本装上并挂进 crontab（`guardian` 每 5 分钟；`dest-guard` 每 10 分钟，默认 dry-run）：
+4. 把守护脚本装上并挂进 crontab（`guardian` 每 5 分钟；`dest-guard` 每 10 分钟，默认 dry-run；`memgate` 由 guardian 与旧看门狗在拉起前调用，不单独挂 cron）：
 
    ```sh
    R=root@"$ROUTER_IP"
    scp guardian/guardian.sh "$R":/etc/ShellCrash/guardian.sh
    scp guardian/dest-guard.sh "$R":/etc/ShellCrash/dest-guard.sh
-   ssh "$R" 'chmod +x /etc/ShellCrash/guardian.sh /etc/ShellCrash/dest-guard.sh'
+   scp guardian/memgate.sh "$R":/etc/ShellCrash/memgate.sh
+   scp guardian/memgate.conf "$R":/etc/ShellCrash/configs/memgate.conf
+   ssh "$R" 'chmod +x /etc/ShellCrash/guardian.sh /etc/ShellCrash/dest-guard.sh /etc/ShellCrash/memgate.sh'
    ssh "$R" 'echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/crontabs/root'
    ssh "$R" 'echo "*/10 * * * * /bin/ash /etc/ShellCrash/dest-guard.sh #站点健康守卫(dry-run)" >> /etc/crontabs/root && /etc/init.d/cron restart'
    ```
 
-5. 维护或升级前先停守护，否则守护会把代理复活、妨碍升级（命令见 [docs/DEPLOY.md](docs/DEPLOY.md)）。
+5. 装巡检脚本 —— `system/router-health/` 三个脚本：`tmp-watch.sh` 每 5 分钟看 RAM 型 `/tmp` 水位并在白名单内回收陈旧文件，`health-snapshot.sh` 每 30 分钟写一份带 24 字段的健康快照（含刷机保留清单漏项审计，只在漏项集合变化时告警），`backup-prune.sh` 每天 04:40 修剪备份区；目标路径与 cron 行见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+
+6. 维护或升级前先停守护，否则守护会把代理复活、妨碍升级（命令见 [docs/DEPLOY.md](docs/DEPLOY.md)）。
 
 > ⚠️ `guardian.sh` **首行即 `#!/bin/sh`**；crontab 与文档统一用 `sh` 或 `/bin/ash` 显式调用 —— `scp` 落地可能丢执行位，直接 `./guardian.sh` 不保证能跑。
 
@@ -69,13 +73,14 @@ Make the Router Boring Again.
 ## 目录
 
 ```
-guardian/       网络守护（检测 + 最小化修复；含站点健康守卫 dest-guard）
+guardian/       网络守护（检测 + 最小化修复；含 OOM 内存闸门 memgate、站点健康守卫 dest-guard）
 recovery/       故障恢复脚本与 Windows 侧触发器
-system/         开机脚本（rc.local）与已归档的一次性脚本
+system/         开机脚本 rc.local、四张自建 nft 表与生成器、router-health 巡检、已归档脚本
 baseline/       sysupgrade 保留清单与无线配置模板
 docs/           文档（唯一索引：docs/README.md）
-tools/          文档自检、密钥守卫、门面资源生成
+tools/          文档自检、密钥与金库守卫、门面资源生成
 third-party/    上游项目索引（本仓不 vendor 源码）
+vault/          私有金库：私钥备份、升级前快照、主题恢复包（gitignored，不入库）
 assets/         logo 与社交预览
 ```
 
@@ -88,7 +93,7 @@ assets/         logo 与社交预览
 
 ## 反馈
 
-遇到问题、想要新功能，或者换了固件/订阅之后某个脚本失灵，都可以到 [Issues](https://github.com/MVennn/AX3000TOpenwrt/issues) 反馈。常见现象先查 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) —— 八个高频现象，每节都是能直接粘的命令；机制与红线见 [docs/PITFALLS.md](docs/PITFALLS.md)。
+遇到问题、想要新功能，或者换了固件/订阅之后某个脚本失灵，都可以到 [Issues](https://github.com/MVennn/AX3000TOpenwrt/issues) 反馈。常见现象先查 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) —— 十个高频现象，每节都是能直接粘的命令；机制与红线见 [docs/PITFALLS.md](docs/PITFALLS.md)。
 
 反馈时带上这些信息：
 
@@ -117,7 +122,7 @@ assets/         logo 与社交预览
 | [**OpenWrt**](https://openwrt.org/) | 固件本体；`/etc/rc.local`、`fw4`/`nft`、`uci`、busybox 工具链 |
 | [**LuCI**](https://github.com/openwrt/luci) | 设备上的 Web 管理界面 —— 本仓把它当**应急入口** |
 | [**ShellCrash**](https://github.com/juewuy/ShellCrash) | 代理配置生成与运行时（`/etc/ShellCrash/`、`start.sh`、`task/task.sh`） |
-| [**mihomo**](https://github.com/MetaCubeX/mihomo) | 代理内核（`CrashCore.raw`）、控制 API `:9999`、Redir 透明代理 `:7892` |
+| [**mihomo**](https://github.com/MetaCubeX/mihomo) | 代理内核（`CrashCore.raw` / 精简版的 `CrashCore.upx`）、控制 API `:9999`、Redir 透明代理 `:7892` |
 | [**MetaCubeX geosite / geoip**](https://github.com/MetaCubeX/meta-rules-dat) | 分流规则集来源 |
 | [**art-design-pro**](https://github.com/Daymychen/art-design-pro) | 设计令牌来源（MIT）；本仓只用其中色值做对比度基准，非代码依赖 |
 | [**nftables**](https://nftables.org/) | 防火墙规则（`quicguard` / `googlecn` / `googleroute` / `mixedport` 四张自建表） |

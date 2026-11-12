@@ -29,7 +29,7 @@
 | [DOC-RULES.md](DOC-RULES.md) | 文档规则正本：分类定位、单一正本映射表、链接纪律、变更触发矩阵、体量预算 |
 | [MAINTENANCE.md](MAINTENANCE.md) | 备份区保留策略与清理流程：命名约定、修剪阈值、改完即删、不做什么清单 |
 | [BACKUP-VAULT.md](BACKUP-VAULT.md) | 私有金库 `vault/`：不可再生的回退材料放哪、怎么取回、为什么绝不入库 |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 排障手册：九个高频现象按「现象 → 步骤 → 原因 / 解法」写，命令可直接粘贴 |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 排障手册：十个高频现象按「现象 → 步骤 → 原因 / 解法」写，命令可直接粘贴 |
 | [PITFALLS.md](PITFALLS.md) | 机制级坑与红线正本：tmpfs OOM / `/var` 软链 / 静默回退 / overlay 余量 |
 | [SECRETS.md](SECRETS.md) | 凭据位置清单与轮换建议：只写存放位置与读取方式，不写任何明文值 |
 | [VERSIONING.md](VERSIONING.md) | 版本晋升正本：三段式进位、版本号只维护在 CHANGELOG、什么时候不动版本号 |
@@ -40,7 +40,9 @@
 | 位置 | 一句话定位 |
 |---|---|
 | [release-notes/](release-notes/README.md) | 面向使用者的 Release 说明，文件名 = `versionName`（不带 `v`，见格式正本） |
-| [release-notes/0.5.0.md](release-notes/0.5.0.md) | 最近一份 Release 说明：AI API 数据面探活、备份修剪三修与 /root/backup 扩管、tmp-watch 迁 tmpfs |
+| [release-notes/0.7.0.md](release-notes/0.7.0.md) | 最近一份 Release 说明：guardian 补回流量归因 cron 自愈、日志降噪、排障手册十个高频现象 |
+| [release-notes/0.6.0.md](release-notes/0.6.0.md) | 上一版 Release 说明：四张自建 nft 表与生成器、健康快照入库、刷机保留清单补齐、门禁 GBK 自毁修复 |
+| [release-notes/0.5.0.md](release-notes/0.5.0.md) | 上一版 Release 说明：AI API 数据面探活、备份修剪三修与 /root/backup 扩管、tmp-watch 迁 tmpfs |
 | [release-notes/0.4.1.md](release-notes/0.4.1.md) | 上一版 Release 说明：锁回收、探针状态码、恢复门控、脚本健壮性 |
 | [release-notes/0.4.0.md](release-notes/0.4.0.md) | 上一版 Release 说明：干净出口运行时解析、站点健康守卫与 7890 收口 |
 | [release-notes/0.3.1.md](release-notes/0.3.1.md) | 上一版 Release 说明：候选列表去掉会打架的节点 |

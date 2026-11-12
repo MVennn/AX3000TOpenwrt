@@ -164,7 +164,7 @@ Windows 中文控制台（cp936）跑 `python -I tools/check-docs.py`，最后�
 **怎么避**：结论行只用 ASCII（`[OK]` / `[FAIL]` / `[!]`），入口再加
 `if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")` 兜底；
 以后凡是往 stdout 写花字（✓、⚠、→、emoji），先在 `python -I` + 系统默认代码页下跑一遍。
-同一问题首次记录见 ZcodeAIModels 仓「踩坑总汇」第 36 节（跨仓引用，非本仓路径）。
+同一问题首次记录见 ModelBus 仓「踩坑总汇」第 36 节（跨仓引用，非本仓路径）。
 
 **⑳ 日志告警「每轮都报当前状态」把 512 KiB 环形缓冲冲成只覆盖 3.8 小时。**
 两层噪音叠在一起：① `cronloglevel` 漂到 5，crond 自身 stderr（`wakeup dt=10`、
