@@ -9,7 +9,34 @@
 
 ---
 
-## [未发布]
+## [0.7.0] — 2026-11-12
+
+### 排障手册补齐第十节，门面部署步骤补全（2026-11-12）
+
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) 由「九个高频现象」扩到**十个**，新增
+  「升完内核后重启验收空响应 / 规则回显晚到」一节：`start.sh` 的 `start_l` 分支是
+  `afstart &` 后台拉起，controller 晚几秒才监听，单次 `curl` 只能拿到空响应；
+  [README.md](README.md) 与 [docs/README.md](docs/README.md) 的「九个高频现象」同步改为十个
+- [README.md](README.md) 部署段补两处此前只写在别处的落点：第 4 步把 `guardian/memgate.sh`
+  与 `guardian/memgate.conf` 一起 `scp` 上报并 `chmod +x`（`memgate` 由 guardian 与旧看门狗
+  在拉起前调用，不单独挂 cron）；新增第 5 步 `system/router-health/` 三个巡检脚本
+  （`tmp-watch.sh` 每 5 分钟、`health-snapshot.sh` 每 30 分钟、`backup-prune.sh` 每天 04:40），
+  原「维护或升级前先停守护」顺延为第 6 步
+- 目录树按实物补齐：`guardian/` 注明 `memgate`，`system/` 注明四张自建 nft 表与生成器、
+  `router-health` 巡检，`tools/` 注明金库守卫，新增 `vault/` 一行（私有金库，gitignored 不入库），
+  `mihomo` 一行补 `CrashCore.upx`
+- [AGENTS.md](AGENTS.md) §5 与 [docs/PITFALLS.md](docs/PITFALLS.md) 第 ⑲ 条的跨仓名
+  `ZcodeAIModels` 改为 `ModelBus`（原 ZcodeAIModels）
+- [docs/README.md](docs/README.md) 索引补 `release-notes/0.6.0.md` 一行，`0.5.0.md` 顺延为「上一版」
+
+### 文档精简与正本口径同步（2026-11-12）
+
+- 删除一次性 cleanup agent 的分片文件，引用它的 `CLEANUP-REPORT.md` 同步改指向
+- 修订上游链接、LAN 占位符、`private-history.bundle` 与凭据示例口径；公开正本不再引用
+  gitignored 的 `.work/` 私有路径
+- [docs/OPERATIONS.md](docs/OPERATIONS.md)「守护进程在做什么」表补 guardian 的 cron 行自愈一行
+  （含两条 `FIX:` 日志关键字），[docs/DEPLOY.md](docs/DEPLOY.md) guardian 职责单元格、
+  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) cron 参考清单同步
 
 ### 设备内核升级到 mihomo v1.19.33（2026-11-10）
 
@@ -31,8 +58,8 @@
   首次执行时 `/version` 空响应被 `|| true` 吞掉留了一行空白）；
   [docs/OPERATIONS.md](docs/OPERATIONS.md) §3 当前值、[docs/HARDWARE.md](docs/HARDWARE.md) §3
   时点指引同步，本地与设备 `/tmp/` 留档脚本双端 md5 一致（`b099bef4d268cb564257207333a2a260`）。
-- 版本判断：设备二进制与配置更新，非本仓脚本功能变更，不发版、不动版本号，按
-  [docs/VERSIONING.md](docs/VERSIONING.md) §5 记在 `[未发布]` 段。
+- 版本判断：设备二进制与配置更新，非本仓脚本功能变更，不单独进位，按
+  [docs/VERSIONING.md](docs/VERSIONING.md) §5 随本版 0.7.0 一并记录。
 
 ### 日志降噪：keepaudit 幂等告警与派生件排除（2026-11-10）
 
@@ -47,8 +74,8 @@
   反复告警属于「报当前值」而非「报变化」。
 - 验证：稳态连跑两次零新增；造 `zz-tune-probe.sh` 立刻可见、删掉后集合恢复
   也可见；隔夜 9 小时真实 cron 零新增，`/tmp/.keepaudit.state` 存活且稳定。
-- 版本判断：属缺陷修复 / 内部行为修正，不发版、不动版本号，按
-  [docs/VERSIONING.md](docs/VERSIONING.md) §5 记在 `[未发布]` 段。
+- 版本判断：属缺陷修复 / 内部行为修正，不单独进位，按
+  [docs/VERSIONING.md](docs/VERSIONING.md) §5 随本版 0.7.0 一并记录。
 
 ### 设备日志配置恢复：cronloglevel 漂移回正（2026-11-10）
 
@@ -78,9 +105,8 @@
 - 验证：`grep traffic-stats /etc/crontabs/root` 应看到该行；删掉这一行后手动跑一次
   `sh /etc/ShellCrash/guardian.sh`，`/tmp/ShellCrash/guardian.log` 出现
   `FIX: restored traffic-stats cron line`，再 `grep` 确认 cron 行已回来
-- 版本判断：新增一个守护项（使用者可感知的新能力）→ 属**功能更新**，发版时进次版本
-  `0.6.0` → `0.7.0`；本次不发版、不动 tag，按 [docs/VERSIONING.md](docs/VERSIONING.md) §5 先记在
-  `[未发布]` 段
+- 版本判断：新增一个守护项（使用者可感知的新能力）→ 属**功能更新**，按
+  [docs/VERSIONING.md](docs/VERSIONING.md) §1 进次版本 `0.6.0` → `0.7.0`
 
 ## [0.6.0] — 2026-11-06
 

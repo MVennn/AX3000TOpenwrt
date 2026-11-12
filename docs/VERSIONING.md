@@ -64,12 +64,12 @@ Release 说明文件名、发版 tag，三处**必须一致**。
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | **`0.6.0`** |
-| 日期 | **2026-11-06** |
-| 性质 | 功能更新：自建 nft 表与生成器、health-snapshot 正本入库；P3 清理与门禁 GBK 自毁修复 |
+| 当前版本 | **`0.7.0`** |
+| 日期 | **2026-11-12** |
+| 性质 | 功能更新：guardian 补回流量归因采样 cron 自愈；keepaudit 漏项集合比对降噪；排障手册第十节与门面部署步骤补全 |
 
-本版条目见 [CHANGELOG.md](../CHANGELOG.md) 的 `## [0.5.0]` 段，
-Release 说明见 [release-notes/0.5.0.md](release-notes/0.5.0.md)，tag 为 `v0.5.0`。
+本版条目见 [CHANGELOG.md](../CHANGELOG.md) 的 `## [0.7.0]` 段，
+Release 说明见 [release-notes/0.7.0.md](release-notes/0.7.0.md)，tag 为 `v0.7.0`。
 
 ## 5. 不发版的时候：不要动版本号
 
