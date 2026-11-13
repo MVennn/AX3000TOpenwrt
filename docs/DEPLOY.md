@@ -36,10 +36,10 @@
 |---|---|---|---|
 | `system/rc.local` | `/etc/rc.local` | 开机（procd 执行） | 回退源 = git 历史；改前的临时 cp 副本按 MAINTENANCE §5「改完即删」验证后即删（2026-11-01 大扫除后 `/root/backup` 不再长期存改前副本） |
 | `system/mixedport.nft` | `/etc/mixedport.nft` | 开机（`rc.local` 执行 `nft -f`） | 从 `/etc/mixedport.nft.bak-*` 还原；缺失时 LAN 可直连 7890（见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)） |
-| `system/googlecn.nft` | `/etc/googlecn.nft` | 开机（`rc.local` 执行 `nft -f`）；Google 国内边缘段 TCP → mihomo | 回退源 = git 历史（2026-11-04 起正本入库） |
-| `system/googleroute.nft` | `/etc/googleroute.nft` | 开机（`rc.local` 等 DNS 1053 就绪后 `nft -f`）；守护补载 | 回退源 = git 历史（2026-11-04 起正本入库） |
+| `system/googlecn.nft` | `/etc/googlecn.nft` | 开机（`rc.local` 执行 `nft -f`）；Google 国内边缘段 TCP → mihomo | 回退源 = git 历史；**表内容正本在 `ShellcrashRules` 仓 `firewall/tables/googlecn.nft`**，本仓是同字节部署镜像，改一处必须同步另一处 |
+| `system/googleroute.nft` | `/etc/googleroute.nft` | 开机（`rc.local` 等 DNS 1053 就绪后 `nft -f`）；守护补载 | 回退源 = git 历史；**表内容正本在 `ShellcrashRules` 仓 `firewall/tables/googleroute.nft`**，本仓是同字节部署镜像 |
 | `system/quicguard.nft` | `/etc/quicguard.nft` | 开机（`rc.local` 执行 `nft -f`）；守护补载 | 回退源 = git 历史（2026-11-04 起正本入库；生成快照，正本是下一行的生成器） |
-| `system/quicguard-sync.sh` | `/etc/quicguard-sync.sh` | 人工（订阅更新 / ShellCrash 重启后重生成 `quicguard.nft`） | 回退源 = git 历史（2026-11-04 起正本入库） |
+| `system/quicguard-sync.sh` | `/etc/quicguard-sync.sh` | 人工（订阅更新 / ShellCrash 重启后重生成 `quicguard.nft`） | 回退源 = git 历史；**生成器正本在 `ShellcrashRules` 仓 `firewall/quicguard-sync.sh`**，本仓是同字节镜像 |
 | `system/router-health/tmp-watch.sh` | `/etc/router-health/tmp-watch.sh` | cron `*/5 * * * *`（`/bin/ash` 调用）；看 `/tmp` 水位，并在白名单内回收根目录的陈旧文件 | 回退源 = git 历史（`.bak-20261023` 副本已于 2026-11-01 清掉）；**停用回收**：改 conf 的 `TMP_PURGE=0`，或临时 `TMPWATCH_PURGE=0 sh …` 只观察 |
 | `system/router-health/tmp-watch.conf` | `/etc/router-health/tmp-watch.conf` | `tmp-watch.sh` 读取阈值与回收开关 | 删文件 → 用脚本内置默认（WARN 24 MB / CRIT 40 MB / `PURGE=1` / 6 小时） |
 | `system/router-health/backup-prune.sh` | `/etc/router-health/backup-prune.sh` | cron `40 4 * * *`（`/bin/ash` 调用）；修剪 `/root/final-backup`（最新 10 个目录、512KB）与 `/root/backup`（MAINTENANCE §3 同套阈值：`.bak-*` 同 stem 最新 1、`pre-*` 最近 3、`*.apk-new` 全删、总量 ≤1 MiB；锚点与最近 3 个 `pre-*` 必保留） | 回退源 = git 历史（2026-11-01 起正本入库）；覆盖前现役脚本备份到 `/tmp/backup-prune.sh.bak-<时间戳>`（重启即清，长期回退走 git） |
@@ -48,7 +48,7 @@
 | `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 回退源 = git 历史（同名副本已清，2026-11-01）；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
 | `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
 | `guardian/dest-guard.sh` | `/etc/ShellCrash/dest-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；**默认 dry-run**，只写 `/tmp/ShellCrash/dest-guard.log` | 删 cron 行 + 删文件；已切换过的组在面板里手动选回 |
-| `bulk-guard.sh`（**不在本仓**，来自 `OpenwrtOpsToolkit/openwrt/`） | `/etc/ShellCrash/bulk-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；组名从 `/etc/openwrt-ops/device.conf` 读 | 删 cron 行 + 删文件；已切过的组在面板里手动选回 |
+| `bulk-guard.sh`（**不在本仓**，来自 `OpenwrtOpsToolkit/openwrt/`） | `/etc/ShellCrash/bulk-guard.sh` | cron `*/3 * * * *`（`/bin/ash` 调用，脚本用法注释的推荐值）；组名从 `/etc/openwrt-ops/device.conf` 读 | 删 cron 行 + 删文件；已切过的组在面板里手动选回 |
 | `/etc/openwrt-ops/device.conf`（设备侧新建，不入库） | 同左 | `bulk-guard.sh` 读取 `BULK_GROUP` / `BULK_PUBLIC` / `BULK_AIRPORT` | 删文件 → 脚本报「未配置」并跳过（不改任何组） |
 | `recovery/recover-now.sh` | `/tmp/recover-now.sh`（临时，用完即弃） | 人工，或 `recovery/local-tools/recover-run.cmd` | 脚本自带回滚：改前把 `fake_ip_filter` 备份到 `/root/fake_ip_filter.bak.<时间戳>`，crontab 备份到 `/tmp/cron.recover.bak` |
 | `recovery/local-tools/recover-run.cmd` | 不上设备 | 人双击 | 无需回退 |
