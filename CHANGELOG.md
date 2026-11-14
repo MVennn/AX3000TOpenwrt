@@ -9,6 +9,52 @@
 
 ---
 
+## [未发布]
+
+### 守护脚本加只读体检与预演，跨仓漂移改由门禁拦（2026-11-14）
+
+- `guardian/guardian.sh` 组状态查询改 tmpfs 文件缓存（`/tmp/ShellCrash/.grp-cache.<pid>`，可被 `GUARDIAN_CACHE_FILE` 覆盖）：
+  同一轮里 `CL` 原本取 4 次、`POOL` 取 2 次，每次一个 `curl` 进程加 2-4 KB 整组 JSON；缓存键按「组名 + TAB」
+  字面前缀匹配，组名含 `.` `*` `[` 也不会误命中，`put` 成功即失效该组
+- `guardian/guardian.sh` 加 `--dry-run`：走完整判定流程，`put` 直接返回 204 不发请求，每条 `FIX:` 降级为
+  `WOULD-FIX:` 并单独计数，用于上机前预演
+- `guardian/guardian.sh` 加 `--status`：不取锁、不改组、不发 PUT，打印各组 `now` 与生效出口、内存与 `/tmp` 水位、
+  四张自建 nft 表是否在位、上一轮 `guardian.state`
+- `guardian/guardian.sh` 每轮收尾写 `/tmp/ShellCrash/guardian.state`（`ts` / `mode` / `fixes` / `errors` / `warns` /
+  `wouldfix` / `mem_avail_mb` / `tmp_pct` / `pool` / `ai_exit` / `clean_node`），给面板与后续联动脚本一个稳定读口
+- `guardian/guardian.sh` cron 行自愈改 `cron_ensure()`：先 `grep -qF` 判在，不在才整表去重后原子替换再重载；
+  原来 `grep -q` 后直接追加重定向不是原子操作，重复行等于每分钟跑两份 legacy 看门狗，双 `CrashCore` 直接 OOM
+- `guardian/guardian.sh` 三处 `grep -q` 改 `grep -qF`（静默回退自愈判组名、cron 行判在）：组名含正则元字符时
+  会被当成模式，误判「配置缺组」进而触发 `hotupdate` 重生成
+- `guardian/guardian.sh` 通用出口守卫加幂等前置：`🚀 节点选择` 已是 `♻️ 自动选择` 时跳过两次 `api.ipify.org`
+  探测（最坏省 24 秒与 2 个 `curl`）
+- `guardian/guardian.sh` `/tmp` 水位改一次 `df` 取两列（原两条管道共 6 个进程），超线先委托 `tmp-watch.sh` 回收，
+  重算仍超线才退回原固定文件列表兜底
+- `system/router-health/health-snapshot.sh` 加 `--json`：写 `/tmp/router-health/health.json`（tmpfs，不占闪存写入预算）
+  并打到标准输出，字段与 `key=value` 行一一对应，另带 `guardian` / `dest_guard` / `shellcrash` 三个子对象；默认行为不变
+- `system/router-health/health-snapshot.sh` 组名去硬编码：`POOL_GROUP` / `AI_WEB` 可覆盖，空格自动转 `%20`，
+  替代原来写死的 `%F0%9F%9A%80...`（组名一改快照静默变空）
+- `system/router-health/health-snapshot.sh` 加内存趋势：连续 3 次低于 30 MB 才 `logger` 告警，单次抖动不再刷日志
+- `system/router-health/health-snapshot.sh` 的 `/var/*` 自愈改「mkdir 成功才打日志」：原来无条件 `echo "[HEAL] recreated ..."`，
+  在只读根或 PC 上试跑会刷一屏假日志，掩盖真实失败
+- `guardian/dest-guard.sh` 加 `--status`：打印每项的模式、组、当前出口、冷却与阈值，不探测不取锁；
+  每轮收尾写 `/tmp/ShellCrash/dest-guard.state`
+- `system/quicguard-sync.sh` 与兄弟仓对齐到新版（每 PID 错误文件、`trap` 清临时文件、校验失败打 `tail -n 30`、
+  备份只留 3 份、`grep -qF`、元素数改用 `count_set()`、统一 `$NFT`），两边 md5 一致；原来本地是旧版，
+  与模板生成口径已经分叉
+- 新增 `tools/check-mirror.sh`：三对同名 nft / 生成器文件按字节比对，生成物与模板按角色校验（生成物头含
+  `GENERATED` 且更大，模板头含 `TEMPLATE`），退出码 `0` 一致 / `1` 漂移 / `2` 找不到兄弟仓
+- `system/router-health/health-snapshot.sh` 的 `--json` 并进 ShellCrash 侧健康快照：子对象 `shellcrash` 直接调用
+  兄弟仓的 `sh /etc/ShellCrash/health-snapshot.sh --no-api`（路径可用 `SHELLCRASH_SNAP` 覆盖、置空即关），
+  消费方不必再各自 `curl` / `nft list` / 读 `/proc` 重算一遍；来源缺失、非零退出或输出半截一律写 `null`，
+  整份 JSON 仍然合法
+- `baseline/sysupgrade.conf` 补保留项 `/www/index.html`：它属于 luci-base 包，重装 luci 就被换回官方跳转页，
+  保留后 `https://<ip>/` 始终落在 `/modern/`
+- `docs/OPERATIONS.md` §四自检命令补 `health-snapshot --json`、`guardian --status` 与 `--dry-run`、
+  `dest-guard --status`，并新增「跨仓一致性门禁」一节
+
+---
+
 ## [0.7.0] — 2026-11-12
 
 ### 排障手册补齐第十节，门面部署步骤补全（2026-11-12）

@@ -82,3 +82,6 @@ build/
 /vault/
 # .work/：临时产物、脱敏发布快照、私有证据与完整历史 bundle
 /.work/
+
+# DSH 会话认领边车（不入库）
+*.dshclaim

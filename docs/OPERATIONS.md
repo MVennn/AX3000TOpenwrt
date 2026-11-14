@@ -92,6 +92,13 @@ DNS             LAN 客户端 53 端口被 nft 劫持到 mihomo :1053（fake-ip�
 ```sh
 # 1) 路由器侧健康快照（每次一行，落 /etc/router-health/）
 sh /etc/router-health/health-snapshot.sh
+#    机器可读版（写 /tmp/router-health/health.json，tmpfs，不占闪存写入预算）
+sh /etc/router-health/health-snapshot.sh --json
+#    JSON 里 guardian / dest_guard / shellcrash 三个子对象，分别内嵌
+#    /tmp/ShellCrash/guardian.state、/tmp/ShellCrash/dest-guard.state，以及
+#    ShellCrash 侧 sh /etc/ShellCrash/health-snapshot.sh --no-api 的输出；
+#    来源缺失或输出半截一律写 null，整份 JSON 仍然合法。换路径用
+#    SHELLCRASH_SNAP=/path/to/health-snapshot.sh 覆盖，置空即关掉这一项。
 
 # 2) AI 链路自检（ShellCrash 侧脚本；应全部 OK，退出码 0）
 sh /etc/ShellCrash/ai-api-check.sh
@@ -110,7 +117,12 @@ tail -20 /tmp/ShellCrash/dest-guard.log
 tail -10 /etc/router-health/tmp-usage.log
 tail -20 /etc/ShellCrash/logs/auto-update.log
 
-# 6) 日志降噪是否生效（2026-11-10 调优后）
+# 6) 守护脚本只读体检（不取锁、不改组、不发 PUT）
+sh /etc/ShellCrash/guardian.sh --status
+sh /etc/ShellCrash/guardian.sh --dry-run   # 完整逻辑预演，FIX: 全降级为 WOULD-FIX:
+sh /etc/ShellCrash/dest-guard.sh --status
+
+# 7) 日志降噪是否生效（2026-11-10 调优后）
 logread | grep -c 'cron.err'                      # 当天应零新增，只剩历史残留
 logread | grep 'keepaudit' | tail -5             # 同一漏项集合只应出现一次
 uci get system.@system[0].cronloglevel           # 应为 9
@@ -139,6 +151,7 @@ sh /etc/router-health/reboot-verify.sh status
 | nft 表补载 | quicguard / googlecn / googleroute 任一缺失 | 从 `/etc/*.nft` 重新加载 |
 | cron 行自愈 | `/etc/crontabs/root` 缺 legacy 看门狗行或流量归因采样行（`start.sh stop`、订阅重写会冲掉） | 补回该行并 `crontab` 重载；日志 `FIX: restored legacy watchdog cron line` / `FIX: restored traffic-stats cron line`（`/etc/ShellCrash/traffic-stats.sh` 不在时不补） |
 | `/tmp` 水位与回收 | 独立 cron `*/5` 跑 `tmp-watch.sh`（不属 guardian） | 超 24 MB 写 WARN；白名单内 6 小时未修改的根目录文件自动删，**子目录不碰**（边界见 [MAINTENANCE.md](MAINTENANCE.md) §6.2） |
+| 只读体检与预演 | 手动跑 `--status` / `--dry-run` | `--status` 打印各组 `now` 与生效出口、内存与 `/tmp` 水位、四张自建 nft 表是否在位，不取锁不改组；`--dry-run` 走完整判定但所有 `FIX:` 降级为 `WOULD-FIX:` 并计数；每轮收尾落 `/tmp/ShellCrash/guardian.state` |
 
 另有 **1 分钟看门狗**（进程不在就拉起，且不会误杀已健康运行的代理）、
 **10 分钟站点健康守卫（dry-run）**、**10 分钟面板选择保存**、
@@ -159,6 +172,34 @@ sh /etc/router-health/reboot-verify.sh status
 **默认 dry-run**：只写 `/tmp/ShellCrash/dest-guard.log`，不切任何组；每项探两次取较小值，
 避免单次抖动误判。观察一周确认判断与体感一致后，在 cron 行前加
 `DEST_GUARD_DRY_RUN=0` 再启用切换。
+
+想先看当前各项挂在哪个组、冷却还剩多久（不探测、不取锁、不写日志）：
+
+```sh
+sh /etc/ShellCrash/dest-guard.sh --status
+```
+
+每轮收尾落 `/tmp/ShellCrash/dest-guard.state`（`ts` / `dry_run` / 每项一行汇总），
+给面板与联动脚本读，不必再解析日志。
+
+### 跨仓一致性门禁（改过 nft 表或生成器后必跑）
+
+本仓的 `system/googleroute.nft`、`system/googlecn.nft`、`system/quicguard-sync.sh` 与兄弟仓
+ShellcrashRules 里的同名文件必须字节一致；`system/quicguard.nft` 是生成物，只能由模板展开生成。
+改完任一侧都跑一遍：
+
+```sh
+sh tools/check-mirror.sh
+```
+
+| 检查项 | 判据 |
+|---|---|
+| 三对同名文件 | md5 完全相同 |
+| `system/quicguard.nft` | 头 8 行含 `GENERATED`，且比模板大（是展开后的集合） |
+| `firewall/tables/quicguard.nft` | 头 10 行含 `TEMPLATE` |
+
+退出码：`0` 全一致 / `1` 有漂移（打印两侧 md5 与字节数）/ `2` 找不到兄弟仓（SKIP）。
+兄弟仓默认取本仓上一级的 `ShellcrashRules`，可用 `SHELLCRASH_RULES_DIR` 指定。
 
 ---
 
