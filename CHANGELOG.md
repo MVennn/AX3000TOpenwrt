@@ -11,6 +11,13 @@
 
 ## [未发布]
 
+### 刷机保留清单补齐顶层辅助脚本（2026-11-14）
+
+- `baseline/sysupgrade.conf` 补 7 项：`guardian.sh` `dest-guard.sh` `health-snapshot.sh` `bulk-guard.sh`
+  `traffic-stats.sh` `stats` `rules-porn.sh`。设备上的 `health-snapshot` 巡检（keepaudit）原来每轮都报
+  「未进保留清单」，清单缺的正是这些被 cron 直接调用的脚本 —— 刷机后 cron 行还在、脚本没了，
+  守护会静默停摆且没有任何报错
+
 ### 守护脚本加只读体检与预演，跨仓漂移改由门禁拦（2026-11-14）
 
 - `guardian/guardian.sh` 组状态查询改 tmpfs 文件缓存（`/tmp/ShellCrash/.grp-cache.<pid>`，可被 `GUARDIAN_CACHE_FILE` 覆盖）：
