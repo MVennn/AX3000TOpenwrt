@@ -107,6 +107,26 @@ cooldown_active() {
 }
 cooldown_set() { date +%s > "$(cooldown_file "$1")" 2>/dev/null; }
 
+# ---- --status：只读打印「表 + 当前出口 + 冷却」，不探测、不取锁、不写日志 ----
+# 排查时用它代替「翻日志猜现在挂在哪」；也方便面板直接调。
+if [ "${1:-}" = "--status" ]; then
+  if [ -z "$API_SECRET" ]; then
+    printf 'error=no_secret\n'
+    exit 0
+  fi
+  printf 'ts=%s dry_run=%s\n' "$(date +%s)" "$DRY_RUN"
+  while IFS='|' read -r NAME GROUP MODE PROBE MAX_MS CANDIDATES; do
+    [ -z "$NAME" ] && continue
+    _cd=no
+    cooldown_active "$GROUP" && _cd=yes
+    printf 'target[%s] mode=%s group=%s now=%s cooldown=%s threshold=%sms\n' \
+      "$NAME" "$MODE" "$GROUP" "$(now_of "$GROUP")" "$_cd" "$MAX_MS"
+  done <<EOF
+$TARGETS
+EOF
+  exit 0
+fi
+
 # ---- 单实例锁：重叠运行直接退出；超过 15 分钟的陈旧锁自动清掉 ----
 mkdir -p "$RUNTIME" "$STATE_DIR" 2>/dev/null
 if ! mkdir "$LOCK" 2>/dev/null; then
@@ -199,4 +219,12 @@ $TARGETS
 EOF
 
 log "INFO:$SUMMARY"
+
+# 机器可读状态（tmpfs）：health-snapshot.sh --json 会把 dest_guard 并进结构化快照。
+# 值里允许空格（summary 是「名=结果 名=结果」形式），按多行 KV 写。
+{
+  printf 'ts=%s\n' "$(date +%s)"
+  printf 'dry_run=%s\n' "$DRY_RUN"
+  printf 'summary=%s\n' "$(printf '%s' "$SUMMARY" | sed 's/^ *//')"
+} > /tmp/ShellCrash/dest-guard.state 2>/dev/null
 exit 0

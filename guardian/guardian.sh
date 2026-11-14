@@ -50,15 +50,99 @@ SECRET="$API_SECRET"
 AUTH="Authorization: Bearer $SECRET"
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
+# 每轮动作计数，供 --status 与 /tmp/ShellCrash/guardian.state 汇总
+# （联动：health-snapshot.sh --json 把这一行并进结构化快照）
+FIXES=0; ERRORS=0; WARNS=0; WOULDFIX=0
 log() {
-  echo "$(ts) $*" >> "$LOG"
-  case "$*" in
-    *FIX*|*ALERT*|*ERROR*|*WARN*) logger -t guardian -p daemon.warn "$*" 2>/dev/null ;;
+  _msg="$*"
+  # dry-run 下把 FIX: 改写成 WOULD-FIX: —— put() 已返回 204 让调用方走成功分支，
+  # 这里统一改写，日志里一眼能看出「本来会动哪一组」。
+  if [ "$MODE" = "dry" ]; then
+    case "$_msg" in FIX:*) _msg="WOULD-FIX:${_msg#FIX:}" ;; esac
+  fi
+  case "$_msg" in
+    *WOULD-FIX*) WOULDFIX=$((WOULDFIX + 1)) ;;
+    *FIX*)       FIXES=$((FIXES + 1)) ;;
+  esac
+  case "$_msg" in *ERROR*) ERRORS=$((ERRORS + 1)) ;; esac
+  case "$_msg" in *WARN*|*ALERT*) WARNS=$((WARNS + 1)) ;; esac
+  echo "$(ts) $_msg" >> "$LOG"
+  case "$_msg" in
+    *FIX*|*ALERT*|*ERROR*|*WARN*) logger -t guardian -p daemon.warn "$_msg" 2>/dev/null ;;
   esac
 }
 enc() { echo "$1" | sed 's/ /%20/g'; }
-grp() { $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null | grep -oE '"now":"[^"]*"' | head -1 | sed 's/"now":"//;s/"$//'; }
-put() { $CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null; }
+
+# ---- 组状态缓存（同一轮内同一组只问一次控制 API）----------------------------
+# 为什么：一轮里「🤖 干净出口」被 resolve_clean_node / 2.2 / 2.3 / 3.6 各取一次，
+# 「🚀 节点选择」被第 3 节与 3.5 各取一次；每次都是一个 curl 进程 + 一份整组
+# JSON（含全部成员与 history，2-4 KB）。缓存后每轮少 4-6 个 curl 与对应解析
+# 进程，并让同一轮的判断基于同一份快照（不会前后结论打架）。
+#
+# 为什么落文件而不是变量：调用点全是 X=$(grp "组名") 的命令替换形式，每次
+# 替换都开一个子 shell —— 在 grp 里改的变量回到父 shell 就丢了，变量缓存
+# 等于没做（2026-11-14 单测实测：两次调用仍是两次请求）。文件放 tmpfs，
+# 每轮独立文件名、收尾删除，不写闪存、不跨轮污染。
+# 空值也缓存 —— 组不存在时不能每轮重复发请求。
+GRP_CACHE_FILE=${GUARDIAN_CACHE_FILE:-/tmp/ShellCrash/.grp-cache.$$}
+
+# 命中判定用 awk 的 index() 做字面前缀匹配（"组名<TAB>"），
+# 组名里带 . * [ ] 都不会误命中别的组。
+grp_cached() {
+  _res=$(awk -v k="$1" 'index($0, k "\t")==1 { print "1" substr($0, length(k)+2); f=1; exit } END{ if(!f) print "0" }' "$GRP_CACHE_FILE" 2>/dev/null)
+  case "$_res" in
+    1*) printf '%s' "${_res#1}"; return 0 ;;
+  esac
+  return 1
+}
+grp_invalidate() {
+  _f="$GRP_CACHE_FILE.new"
+  if awk -v k="$1" 'index($0, k "\t")!=1' "$GRP_CACHE_FILE" > "$_f" 2>/dev/null; then
+    mv -f "$_f" "$GRP_CACHE_FILE" 2>/dev/null
+  fi
+  rm -f "$_f" 2>/dev/null
+}
+grp_uncached() {
+  $CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$1")" 2>/dev/null \
+    | grep -oE '"now":"[^"]*"' | head -1 | sed 's/"now":"//;s/"$//'
+}
+grp() {
+  if grp_cached "$1"; then return 0; fi
+  _v=$(grp_uncached "$1")
+  printf '%s\t%s\n' "$1" "$_v" >> "$GRP_CACHE_FILE" 2>/dev/null
+  printf '%s' "$_v"
+}
+put() {
+  # dry-run：不落任何切换，但让调用方走「成功」分支，由 log() 统一把 FIX:
+  # 改写成 WOULD-FIX: —— 单点处理，调用处不必各写一份判断。
+  if [ "$MODE" = "dry" ]; then printf '%s' "204"; return 0; fi
+  _code=$($CURL -s -m 8 -o /dev/null -w "%{http_code}" -H "$AUTH" -X PUT "$CTRL/proxies/$(enc "$1")" -H 'Content-Type: application/json' -d "{\"name\":\"$2\"}" 2>/dev/null)
+  [ "$_code" = "204" ] && grp_invalidate "$1"
+  printf '%s' "$_code"
+}
+
+# ---- 运行模式 ---------------------------------------------------------------
+# run（默认）: 检测 + 最小化修复
+# dry        : 只记录 WOULD-FIX，不调用任何 put（改策略组前先试跑）
+# status     : 只读体检，打印各组出口 / 内存 / tmpfs / nft，不取锁、不写日志
+MODE=run
+case "${1:-}" in
+  --dry-run) MODE=dry ;;
+  --status)  MODE=status ;;
+  -h|--help)
+    printf 'usage: %s [--dry-run|--status]\n' "$0"
+    printf '  --dry-run  只记录 WOULD-FIX，不切换任何策略组\n'
+    printf '  --status   只读打印当前状态（不取锁、不写日志）\n'
+    exit 0 ;;
+  '') ;;
+  *) printf 'usage: %s [--dry-run|--status]\n' "$0" >&2; exit 2 ;;
+esac
+# 环境变量只在默认模式下生效：--status 是只读体检，被降级成 dry 会去取锁、
+# 改策略组，与 usage 承诺相反。
+[ "$MODE" = "run" ] && [ "${GUARDIAN_DRY_RUN:-0}" = "1" ] && MODE=dry
+
+# 缓存文件在参数解析之后才建：--help / 非法参数提前 exit，不该在 tmpfs 留空文件。
+: > "$GRP_CACHE_FILE" 2>/dev/null
 
 # 同一时间只允许一个实例：3.6 逐个候选探测最坏要跑两分多钟，加上 3.5 与第 1 节
 # 的等待，整轮可能超过 cron 的 5 分钟；叠轮会让两轮同时切策略组、同时写
@@ -81,9 +165,9 @@ acquire_lock() {
   mkdir "$GUARDIAN_LOCK" 2>/dev/null || { log "无法取得实例锁，跳过本轮"; exit 0; }
   echo $$ > "$GUARDIAN_LOCK/pid"
   echo "$_now" > "$GUARDIAN_LOCK/ts"
-  trap 'rm -f "$GUARDIAN_LOCK/pid" "$GUARDIAN_LOCK/ts" 2>/dev/null; rmdir "$GUARDIAN_LOCK" 2>/dev/null' EXIT INT TERM HUP
+  trap 'rm -f "$GUARDIAN_LOCK/pid" "$GUARDIAN_LOCK/ts" 2>/dev/null; rmdir "$GUARDIAN_LOCK" 2>/dev/null; rm -f "$GRP_CACHE_FILE" "$GRP_CACHE_FILE.new" 2>/dev/null' EXIT INT TERM HUP
 }
-acquire_lock
+[ "$MODE" = "status" ] || acquire_lock
 
 # 节点到 Google 的实链路探测：有 delay 字段就算可达。
 # 干净出口只服务 Google 家族；GitHub 由 🔗 GitHub 出口 组自行 url-test（2026-10-22 拆组）。
@@ -185,6 +269,31 @@ eff_node() {
     *) echo "$n" ;;
   esac
 }
+
+# ---- --status：只读体检（不取锁、不写日志、不切换）--------------------------
+# 给「动手之前先看一眼」用：一次拿到全部关键组出口 + 内存 + tmpfs + nft 表，
+# 不必再 tail 三个日志文件拼状态。组状态走 grp() 的缓存，每组只问一次。
+if [ "$MODE" = "status" ]; then
+  _NFT=${NFT:-nft}
+  printf 'mode=status ts=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+  printf 'api=%s secret=%s\n' "$CTRL" "$([ -n "$SECRET" ] && echo set || echo MISSING)"
+  for _g in "$AI_GROUP" "$AI_WEB" "$CL" "$POOL_GROUP" "${AI_API_GROUP:-🤖 AI接口}"; do
+    printf 'group[%s] now=%s eff=%s\n' "$_g" "$(grp "$_g")" "$(eff_node "$_g")"
+  done
+  printf 'clean_verdict=%s clean_cache=%s\n' \
+    "$(cat "$CLEAN_VERDICT_FILE" 2>/dev/null || echo '?')" \
+    "$(cat "$CLEAN_CACHE" 2>/dev/null || echo '?')"
+  printf 'mem_avail_mb=%s\n' "$(awk '/^MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null)"
+  printf 'tmp=%s\n' "$(df -k /tmp 2>/dev/null | tail -1 | awk '{printf "%sK/%sK (%d%%)", $3, $2, ($2>0?$3*100/$2:0)}')"
+  for _t in quicguard googleroute googlecn mixedport; do
+    if $_NFT list table inet "$_t" >/dev/null 2>&1; then printf 'nft[%s]=loaded\n' "$_t"
+    else printf 'nft[%s]=MISSING\n' "$_t"; fi
+  done
+  printf 'state=%s\n' "$(cat /tmp/ShellCrash/guardian.state 2>/dev/null || echo '<none>')"
+  # status 不取锁（没有 trap），缓存文件自己收
+  rm -f "$GRP_CACHE_FILE" "$GRP_CACHE_FILE.new" 2>/dev/null
+  exit 0
+fi
 
 # 秒数比较用数值，不用 case glob —— "10.0" / "12.5" 这类带小数点的
 # 两位数以上耗时不会命中 "3.*|4.*|…" 那套模式，判据会被静默跳过。
@@ -329,6 +438,12 @@ fi
 # ---------- 3.5) 通用出口健康守卫（EXIT_HEALTH）----------
 # 通用池的节点会劣化（实测德国节点从 5s 恶化到 15s，表现为全站超时）。
 # 这里按真实出口耗时判定：超过 3 秒就复位到「♻️ 自动选择」（url-test 会挑最快的节点）。
+# 幂等前置：3.5 唯一的动作是把池复位到「♻️ 自动选择」。池已经是它时，探测与
+# 复位都不产生任何状态变化 —— 直接跳过两次出口探测（最坏省 24s 与 2 个 curl）。
+POOL_EFF=$(eff_node "$POOL_GROUP")
+if [ "$POOL_EFF" = "$POOL_FALLBACK_GROUP" ]; then
+  :
+else
 P1=$($CURL -s -m 12 -o /dev/null -w "%{http_code} %{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
 P2=$($CURL -s -m 12 -o /dev/null -w "%{http_code} %{time_total}" -x "$PROXY" "https://api.ipify.org" 2>/dev/null)
 if [ -n "$P1" ] && [ -n "$P2" ]; then
@@ -346,6 +461,7 @@ if [ -n "$P1" ] && [ -n "$P2" ]; then
       log "ERROR: 通用出口复位失败（控制 API 拒绝）"
     fi
   fi
+fi
 fi
 
 # ---------- 3.6) 干净出口健康守卫（CLEAN_EXIT_HEALTH）----------
@@ -413,7 +529,9 @@ for t in quicguard googleroute googlecn; do
 done
 
 # ---------- 5) 静默回退自愈 ----------
-if ! grep -q "name: $AI_WEB" /tmp/ShellCrash/config.yaml 2>/dev/null; then
+# -F：组名里有 emoji 与空格，一旦将来带上 . * [ 之类字符，正则匹配会误判
+# 「配置里没有这个组」→ 误触发一次 hotupdate 重生成（闪存写 + 组序被打乱）。
+if ! grep -qF "name: $AI_WEB" /tmp/ShellCrash/config.yaml 2>/dev/null; then
   LASTF=/tmp/ShellCrash/.last_fallback_heal
   NOWT=$(date +%s)
   PREV=$(cat $LASTF 2>/dev/null || echo 0)
@@ -453,37 +571,90 @@ AVAIL=$(awk '/^MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null)
 # 实测（2026-10-20 12:45）：升级内核时 gunzip 57MB 核心进 /tmp，tmpfs 占用冲到 99%，
 # 核心被杀、路由器重启，重启后 DNS 劫持指向没起来的核心 → 全家「连上 WiFi 但没网」。
 # 所以这里每 5 分钟看一眼水位，超 80% 就把已知的临时大文件清掉。
-TMPK=$(df -k /tmp 2>/dev/null | tail -1 | awk '{print $3}')
-TMPT=$(df -k /tmp 2>/dev/null | tail -1 | awk '{print $2}')
+# 一次 df 取两个数：原来是两条 df|tail|awk（6 个进程），现在一条（3 个进程）。
+# 不用 set --：那会把脚本自己的位置参数（$1）覆盖成 df 的列，后续任何
+# 用到 $1 的地方都会读到容量数字。
+_df=$(df -k /tmp 2>/dev/null | tail -1 | awk '{print $2" "$3}')
+case "$_df" in
+  *" "*) TMPT=${_df%% *}; TMPK=${_df##* } ;;
+  *) TMPT=; TMPK= ;;
+esac
 if [ -n "$TMPK" ] && [ -n "$TMPT" ] && [ "$TMPT" -gt 0 ]; then
   TMPP=$((TMPK * 100 / TMPT))
   if [ "$TMPP" -ge 80 ]; then
     log "WARN: /tmp 内存盘已用 ${TMPP}%（${TMPK}K/${TMPT}K），接近撑爆会 OOM 并触发看门狗重启"
-    for f in /tmp/pre-reboot-config.tar.gz /tmp/m132 /tmp/m132.gz /tmp/scmeta.tar.gz \
-             /tmp/sc-meta.tar.gz /tmp/mihomo-new /tmp/mihomo-arm64.gz /tmp/core_test_out.txt \
-             /tmp/_core_test.sh /tmp/gpage.html /tmp/g2.html /tmp/g4.html /tmp/g5.html /tmp/pt.html \
-             /tmp/sub.raw /tmp/sub.txt /tmp/sub2.txt; do
-      [ -e "$f" ] && { rm -rf "$f" 2>/dev/null; log "FIX: 已清理 /tmp 临时大文件 $f"; }
-    done
+    # 清理逻辑优先委托 tmp-watch.sh（单点实现）：它有白名单 / 保护名单 /
+    # 被打开 fd 检查 / 每轮 64 文件 8MB 配额，比这里的固定列表更懂哪些能删。
+    # 委托后仍超线，才退回固定列表兜底（大文件不在白名单里时它不会碰）。
+    if [ -x /etc/router-health/tmp-watch.sh ]; then
+      TMPWATCH_PURGE=1 /bin/ash /etc/router-health/tmp-watch.sh >/dev/null 2>&1 \
+        && log "FIX: 已委托 tmp-watch.sh 清理 /tmp（触发水位 ${TMPP}%）"
+    fi
     TMPK2=$(df -k /tmp 2>/dev/null | tail -1 | awk '{print $3}')
+    TMPP2=$(( ${TMPK2:-0} * 100 / TMPT ))
+    if [ "$TMPP2" -ge 80 ]; then
+      for f in /tmp/pre-reboot-config.tar.gz /tmp/m132 /tmp/m132.gz /tmp/scmeta.tar.gz \
+               /tmp/sc-meta.tar.gz /tmp/mihomo-new /tmp/mihomo-arm64.gz /tmp/core_test_out.txt \
+               /tmp/_core_test.sh /tmp/gpage.html /tmp/g2.html /tmp/g4.html /tmp/g5.html /tmp/pt.html \
+               /tmp/sub.raw /tmp/sub.txt /tmp/sub2.txt; do
+        [ -e "$f" ] && { rm -rf "$f" 2>/dev/null; log "FIX: 已清理 /tmp 临时大文件 $f"; }
+      done
+      TMPK2=$(df -k /tmp 2>/dev/null | tail -1 | awk '{print $3}')
+    fi
     log "INFO: /tmp 清理后占用 ${TMPK2}K/${TMPT}K"
   fi
 fi
 
 # cron lifeline: start.sh stop 会重写 crontab 并删掉 legacy 看门狗行,
 # 这里每 5 分钟检查一次, 缺失就补回 (2026-10-20 事故)
-if ! grep -q 'start_legacy_wd.sh' /etc/crontabs/root 2>/dev/null; then
-    echo '* * * * * /bin/ash /etc/ShellCrash/starts/start_legacy_wd.sh shellcrash #ShellCrash保守模式守护进程' >> /etc/crontabs/root
-    crontab /etc/crontabs/root 2>/dev/null
-    log "FIX: restored legacy watchdog cron line"
+# 追加 cron 行并去重：grep -q 之后直接 >> 不是原子操作，start.sh 重写 crontab 与
+# 本脚本追加交错时会出现重复行 —— 每分钟跑两份 legacy 看门狗 = 双 CrashCore =
+# OOM 与断网（AGENTS 硬红线）。这里写临时文件去重后 mv 覆盖，再 crontab 重载。
+cron_ensure() {
+  _pat="$1"; _line="$2"; _f=/etc/crontabs/root
+  grep -qF "$_pat" "$_f" 2>/dev/null && return 0
+  _tmp=/tmp/ShellCrash/crontab.$$
+  { cat "$_f" 2>/dev/null; printf '%s\n' "$_line"; } | awk '!seen[$0]++' > "$_tmp" 2>/dev/null \
+    || { rm -f "$_tmp"; return 1; }
+  mv -f "$_tmp" "$_f" 2>/dev/null || { rm -f "$_tmp"; return 1; }
+  crontab "$_f" 2>/dev/null
+  return 0
+}
+if ! grep -qF 'start_legacy_wd.sh' /etc/crontabs/root 2>/dev/null; then
+    if cron_ensure 'start_legacy_wd.sh' '* * * * * /bin/ash /etc/ShellCrash/starts/start_legacy_wd.sh shellcrash #ShellCrash保守模式守护进程'; then
+        log "FIX: restored legacy watchdog cron line"
+    else
+        log "ERROR: 补回 legacy watchdog cron 行失败（/etc/crontabs/root 不可写？）"
+    fi
 fi
 
 # 流量归因采样（OpenwrtOpsToolkit/traffic-stats.sh）：这一行同样会被 start.sh
 # stop / 订阅重写 crontab 冲掉 —— 2026-11-02 10:14 起停了 4 天到 11-06 才发现，
 # 期间「机场流量被谁吃了」是空白。脚本不在就不补，免得每 5 分钟刷一条失败记录。
-if [ -f /etc/ShellCrash/traffic-stats.sh ] && ! grep -q 'traffic-stats.sh' /etc/crontabs/root 2>/dev/null; then
-    echo '* * * * * /bin/ash /etc/ShellCrash/traffic-stats.sh #流量归因:按策略组+域名每分钟采样' >> /etc/crontabs/root
-    crontab /etc/crontabs/root 2>/dev/null
-    log "FIX: restored traffic-stats cron line"
+if [ -f /etc/ShellCrash/traffic-stats.sh ] && ! grep -qF 'traffic-stats.sh' /etc/crontabs/root 2>/dev/null; then
+    if cron_ensure 'traffic-stats.sh' '* * * * * /bin/ash /etc/ShellCrash/traffic-stats.sh #流量归因:按策略组+域名每分钟采样'; then
+        log "FIX: restored traffic-stats cron line"
+    else
+        log "ERROR: 补回 traffic-stats cron 行失败（/etc/crontabs/root 不可写？）"
+    fi
 fi
+
+# ---------- 收尾：写机器可读状态（tmpfs，不占闪存）----------
+# 联动搭桥：health-snapshot.sh --json 会把这行并进结构化快照，
+# 排查时不用再 tail 日志拼「这轮修了什么」。
+# 多行 KV（一行一个键，值可含空格）：health-snapshot.sh --json 逐行读成 JSON 对象，
+# 用单行空格分隔时含空格的节点名没法稳定切分。
+{
+  printf 'ts=%s\n' "$(date +%s)"
+  printf 'mode=%s\n' "$MODE"
+  printf 'fixes=%s\n' "$FIXES"
+  printf 'errors=%s\n' "$ERRORS"
+  printf 'warns=%s\n' "$WARNS"
+  printf 'wouldfix=%s\n' "$WOULDFIX"
+  printf 'mem_avail_mb=%s\n' "${AVAIL:-0}"
+  printf 'tmp_pct=%s\n' "${TMPP:-0}"
+  printf 'pool=%s\n' "$(eff_node "$POOL_GROUP")"
+  printf 'ai_exit=%s\n' "$(grp "$AI_WEB")"
+  printf 'clean_node=%s\n' "$(grp "$CL")"
+} > /tmp/ShellCrash/guardian.state 2>/dev/null
 exit 0
