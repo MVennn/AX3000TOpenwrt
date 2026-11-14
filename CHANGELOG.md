@@ -17,6 +17,10 @@
   `traffic-stats.sh` `stats` `rules-porn.sh`。设备上的 `health-snapshot` 巡检（keepaudit）原来每轮都报
   「未进保留清单」，清单缺的正是这些被 cron 直接调用的脚本 —— 刷机后 cron 行还在、脚本没了，
   守护会静默停摆且没有任何报错
+- `docs/DEPLOY.md` 新增「部署后验证」段：`md5sum -c` 验字节 → `health-snapshot.sh --no-api` /
+  `guardian.sh --status` / `dest-guard.sh --status` 验行为，三段都是只读；并写明判核心死活看
+  `/proc/<pid>/comm` 或 `core.running` —— 这台机器的核心进程名是 `CrashCore`，
+  `pgrep -f mihomo` 必假阴性（2026-11-14 部署脚本据此误报过一次「不在跑（异常）」）
 
 ### 守护脚本加只读体检与预演，跨仓漂移改由门禁拦（2026-11-14）
 
