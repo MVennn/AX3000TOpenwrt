@@ -61,6 +61,28 @@
 | `recovery/archive/recover-tmpfull.sh` | `/tmp/recover-tmpfull.sh` | 人工 | 已被 `recover-now.sh` v2 覆盖（nft、配置重生成、crontab 恢复都更全） |
 | `recovery/archive/verify-fix.sh` | `/tmp/verify-fix.sh` | 人工 | 已被 ShellCrash 侧 `ai-api-check.sh` 覆盖；且依赖本仓没有的 `/etc/router-health/` |
 
+## 部署后验证
+
+上传完先验字节、再验行为，两条都过才算部署成功：
+
+```sh
+# 1) 字节：staging 目录里带 MANIFEST.md5，逐项比对，任何一项 FAILED 都不要往下走
+md5sum -c MANIFEST.md5
+
+# 2) 行为：核心是否在跑、内存与 /tmp 水位、nft 表是否 loaded
+/etc/ShellCrash/health-snapshot.sh --no-api     # 看 core.running / mem.used_pct / tmp
+/etc/ShellCrash/guardian.sh --status            # 只读：secret=set、各组 now/eff、mem_avail_mb
+/etc/ShellCrash/dest-guard.sh --status          # 只读：dry_run 与各 target 状态
+```
+
+**判核心死活别用 `pgrep -f mihomo`** —— 这台机器上的进程名是 `CrashCore`
+（`cat /proc/<pid>/comm` 才是准的），拿 mihomo 去匹配会得到「不在跑」的假结论，
+进而误判成部署把代理搞挂了。可信判据只有两个：`health-snapshot` 的 `core.running`
+与 `/proc/<pid>/comm`。
+
+**只重启 cron**（`/etc/init.d/cron restart`）让新脚本下一轮生效；mihomo 与 ShellCrash
+是长驻件，重启会断网，部署流程不碰它们。
+
 ## 启用与停用守护
 
 守护由 crontab 里的这一行拉起（用 `/bin/ash` 显式调用，不依赖执行位；脚本**首行即
