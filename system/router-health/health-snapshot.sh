@@ -1,18 +1,33 @@
 #!/bin/sh
 # 路由器健康快照 —— 定时把关键指标记到持久日志，便于事后回溯
-# 用法: sh /etc/router-health/health-snapshot.sh [标签]
+# 用法: sh /etc/router-health/health-snapshot.sh [标签] [--json]
 # 日志: /etc/router-health/health-YYYYMMDD.log（overlay 持久，重启不丢；保留 7 天）
+# --json: 额外产出一行结构化 JSON（stdout + /tmp/router-health/health.json，tmpfs），
+#         供面板 / 脚本直接消费；不改变默认行为（默认仍只追加一行 KV 到 flash 日志）。
+#         联动：把 guardian.state 与 dest-guard.state 并进 guardian / dest_guard 两个子对象。
 
-TAG="${1:-auto}"
+TAG=auto
+JSON=0
+for a in "$@"; do
+  case "$a" in
+    --json) JSON=1 ;;
+    -h|--help)
+      printf 'usage: %s [标签] [--json]\n' "$0"
+      exit 0 ;;
+    *) TAG="$a" ;;
+  esac
+done
 DIR=/etc/router-health
 SECRET=$(grep -m1 "^secret=" /etc/ShellCrash/configs/ShellCrash.cfg 2>/dev/null | cut -d= -f2- | tr -d "'\"")
 CTRL=http://127.0.0.1:9999
 API="Authorization: Bearer $SECRET"
 
-mkdir -p "$DIR"
+mkdir -p "$DIR" 2>/dev/null
 # 自愈: /var -> /tmp 的软链, 运行时目录被误删会让 dnsmasq 等服务起不来
+# 只在真的建成功时才打日志 —— 原来无条件 echo, 只读根或 PC 上试跑会刷一屏「已重建」假日志
 for d in etc lib run lock state spool shm tmp overlay sysinfo odhcpd-piodir resolv.conf.d log; do
-  [ -d "/var/$d" ] || { mkdir -p "/var/$d" 2>/dev/null; echo "[HEAL] recreated /var/$d"; }
+  [ -d "/var/$d" ] && continue
+  mkdir -p "/var/$d" 2>/dev/null && echo "[HEAL] recreated /var/$d"
 done
 LOG="$DIR/health-$(date +%Y%m%d).log"
 
@@ -50,7 +65,6 @@ OVL=$(df -k /overlay | tail -1 | awk '{print $3"/"$2}')
 TEMP=$(awk '{print int($1/1000)}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
 TMPU=$(df -k /tmp | tail -1 | awk '{print $3"/"$2}')
 TMPW=0
-case "$TMPU" in */*) : ;; esac
 TMPA=${TMPU%%/*}
 case "$TMPA" in ""|*[!0-9]*) TMPA=0 ;; esac
 TMPT=${TMPU##*/}
@@ -65,14 +79,67 @@ MIMO=$(pidof CrashCore 2>/dev/null | head -1)
 DNSPID=$(pidof dnsmasq 2>/dev/null | head -1)
 MIVER=$(curl -s -m 5 -H "$API" "$CTRL/version" 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
 CONN=$(curl -s -m 5 -H "$API" "$CTRL/connections" 2>/dev/null | grep -o '"downloadTotal":[0-9]*' | head -1 | cut -d: -f2)
-NODENOW=$(curl -s -m 5 -H "$API" "$CTRL/proxies/%F0%9F%9A%80%20%E8%8A%82%E7%82%B9%E9%80%89%E6%8B%A9" 2>/dev/null | grep -o '"now":"[^"]*"' | head -1 | cut -d'"' -f4)
-AINOW=$(curl -s -m 5 -H "$API" "$CTRL/proxies/%F0%9F%A4%96%20AI%E7%BD%91%E9%A1%B5" 2>/dev/null | grep -o '"now":"[^"]*"' | head -1 | cut -d'"' -f4)
+# 组名不再硬编码 URL 编码：原来是 %F0%9F%9A%80%20%E8%8A%82... 这种死值，
+# 组名一改（重排 / 改名）快照就静默变成空字段，而看的人还以为「没有数据」。
+# 与 guardian.sh 的 enc() 同一口径：只转空格，mihomo 接受 UTF-8 原样路径。
+POOL_GROUP="${POOL_GROUP:-🚀 节点选择}"
+AI_WEB="${AI_WEB:-🤖 AI网页}"
+urlenc() { printf '%s' "$1" | sed 's/ /%20/g'; }
+NODENOW=$(curl -s -m 5 -H "$API" "$CTRL/proxies/$(urlenc "$POOL_GROUP")" 2>/dev/null | grep -o '"now":"[^"]*"' | head -1 | cut -d'"' -f4)
+AINOW=$(curl -s -m 5 -H "$API" "$CTRL/proxies/$(urlenc "$AI_WEB")" 2>/dev/null | grep -o '"now":"[^"]*"' | head -1 | cut -d'"' -f4)
 NFT=$(nft list tables 2>/dev/null | wc -l)
 CH24=$(iw dev phy0-ap0 info 2>/dev/null | grep -o 'channel [0-9]*' | head -1 | cut -d' ' -f2)
 CH5=$(iw dev phy1-ap0 info 2>/dev/null | grep -o 'channel [0-9]*' | head -1 | cut -d' ' -f2)
 STA24=$(iw dev phy0-ap0 station dump 2>/dev/null | grep -c Station)
 STA5=$(iw dev phy1-ap0 station dump 2>/dev/null | grep -c Station)
 LASTFAIL=$(cat /etc/ShellCrash/logs/LAST_FAILURE 2>/dev/null | tr -d '\n')
+
+# --- 内存趋势：连续多少次低于 30MB（与 guardian 的 WARN 阈值同口径）---
+# 单次低是噪声（一次 hotupdate 解压就能压到 20MB），连续 3 次（=90 分钟）才算趋势。
+# 状态放 tmpfs，不写闪存。
+MEMLOW_F=/tmp/router-health/.memlow.state
+MEMLOW=$(cat "$MEMLOW_F" 2>/dev/null)
+case "$MEMLOW" in ''|*[!0-9]*) MEMLOW=0 ;; esac
+case "$MEMAV" in ''|*[!0-9]*) MEMAV=0 ;; esac
+if [ "$MEMAV" -lt 30720 ]; then
+  MEMLOW=$((MEMLOW + 1))
+  [ "$MEMLOW" -ge 3 ] && logger -t health "WARN mem_avail_kb=${MEMAV} 连续 ${MEMLOW} 次低于 30MB" 2>/dev/null
+else
+  MEMLOW=0
+fi
+mkdir -p /tmp/router-health 2>/dev/null
+printf '%s\n' "$MEMLOW" > "$MEMLOW_F" 2>/dev/null
+
+# --- JSON 辅助（只在 --json 时用到；纯 shell，不依赖 jq）---
+jesc() {
+  printf '%s' "$1" | tr '\n\r\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+jnum() { case "$2" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$2" ;; esac; }
+# 跨仓联动：设备上若装了 ShellcrashRules 仓的契约快照（/etc/ShellCrash/health-snapshot.sh，
+# schema shellcrash.health/1），把它的整份 JSON 内嵌成 shellcrash 子对象 —— 消费方只读这一份
+# 文件，不必再各自 ssh 上去采一遍。用 --no-api 采：api 结论以本文件顶层的 ai_exit / node 为准，
+# 每 30 分钟不再多打一次控制 API。SHELLCRASH_SNAP 置空即关闭；路径不存在时输出 null。
+SHELLCRASH_SNAP=${SHELLCRASH_SNAP-/etc/ShellCrash/health-snapshot.sh}
+sc_json() {
+  [ -n "$SHELLCRASH_SNAP" ] && [ -r "$SHELLCRASH_SNAP" ] || { printf 'null'; return 0; }
+  _s=$(sh "$SHELLCRASH_SNAP" --no-api 2>/dev/null | tr -d '\n\r')
+  # 半截 JSON 会把整份快照搞坏：只接受首尾配对的单层对象，否则报 null
+  case "$_s" in
+    '{'*'}') printf '%s' "$_s" ;;
+    *) printf 'null' ;;
+  esac
+}
+# 把一个多行 KV 状态文件（guardian.state / dest-guard.state）转成 JSON 子对象。
+# 值可含空格，所以按第一个 "=" 切分；键为空的行跳过。
+sub_json() {
+  _f="$1"; _o=""
+  [ -r "$_f" ] || { printf 'null'; return 0; }
+  while IFS='=' read -r _k _v; do
+    [ -n "$_k" ] || continue
+    _o="$_o$(printf '"%s": "%s", ' "$(jesc "$_k")" "$(jesc "$_v")")"
+  done < "$_f"
+  printf '{%s}' "${_o%, }"
+}
 
 {
   printf "%s " "$TS"
@@ -101,6 +168,36 @@ LASTFAIL=$(cat /etc/ShellCrash/logs/LAST_FAILURE 2>/dev/null | tr -d '\n')
   one last_fail "$LASTFAIL"
   echo
 } >> "$LOG"
+
+# --- 结构化输出（--json）：写 tmpfs 并回显，供面板 / 脚本直接消费 ---
+# 默认行为不变（上面那一行 KV 照旧进 flash 日志，保持时间线连续）。
+if [ "$JSON" = "1" ]; then
+  J=/tmp/router-health/health.json
+  {
+    printf '{"ts": "%s", "epoch": %s, "tag": "%s", ' "$TS" "$(date +%s)" "$(jesc "$TAG")"
+    printf '"load": "%s", "uptime_s": %s, ' "$(jesc "$LOAD")" "$(jnum "$UPT")"
+    printf '"mem_avail_kb": %s, "mem_total_kb": %s, "mem_low_streak": %s, ' \
+      "$(jnum "$MEMAV")" "$(jnum "$MEMTOT")" "$(jnum "$MEMLOW")"
+    printf '"temp_c": %s, ' "$(jnum "$TEMP")"
+    printf '"overlay_kb": "%s", "tmp_kb": "%s", "tmp_warn": "%s", ' \
+      "$(jesc "$OVL")" "$(jesc "$TMPU")" "$TMPW"
+    printf '"conntrack": "%s", ' "$(jesc "$CT/$CTMAX")"
+    printf '"wan_ip": "%s", "wan_mtu": "%s", "wan_up": %s, ' \
+      "$(jesc "$WANIP")" "$(jesc "$WANMTU")" "$(jnum "$WANUP")"
+    printf '"mihomo_pid": "%s", "mihomo_ver": "%s", "dnsmasq_pid": "%s", ' \
+      "$(jesc "$MIMO")" "$(jesc "$MIVER")" "$(jesc "$DNSPID")"
+    printf '"conns": "%s", ' "$(jesc "$CONN")"
+    printf '"node": "%s", "ai_exit": "%s", ' "$(jesc "$NODENOW")" "$(jesc "$AINOW")"
+    printf '"nft_tables": %s, ' "$(jnum "$NFT")"
+    printf '"ch24": "%s", "ch5": "%s", ' "$(jesc "$CH24/$STA24")" "$(jesc "$CH5/$STA5")"
+    printf '"last_fail": "%s", ' "$(jesc "$LASTFAIL")"
+    printf '"guardian": %s, ' "$(sub_json /tmp/ShellCrash/guardian.state)"
+    printf '"dest_guard": %s, ' "$(sub_json /tmp/ShellCrash/dest-guard.state)"
+    printf '"shellcrash": %s' "$(sc_json)"
+    printf '}\n'
+  } > "$J.tmp" 2>/dev/null && mv -f "$J.tmp" "$J"
+  cat "$J" 2>/dev/null
+fi
 
 # 日志体积上限 512KB，超了截尾
 SZ=$(wc -c < "$LOG" 2>/dev/null || echo 0)
