@@ -15,6 +15,7 @@
 |---|---|
 | [HARDWARE.md](HARDWARE.md) | 硬件与固件基线：型号 / SoC / 内存 / 拓扑，每条带来源与时点，换环境须重验 |
 | [OPERATIONS.md](OPERATIONS.md) | 路由器状态速查：当前配置值、访问入口、需要的包、自检命令，改动即刷新 |
+| [TUNING-RESEARCH.md](TUNING-RESEARCH.md) | 路由调优研究与 GitHub 高星项目对照：外部研究逐条对齐本机实测，只列真正待落地项 |
 
 ## 二、功能专项
 
