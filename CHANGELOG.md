@@ -11,6 +11,16 @@
 
 ## [未发布]
 
+### 路由调优「待落地项」上机核对：三项早已生效，一项有据否决（2026-11-16）
+
+- `docs/TUNING-RESEARCH.md` 研究轮提出的 4 项待落地建议，SSH 上机只读核对后结论：
+  GOMEMLIMIT=64MiB（`command.env` 已 export，运行进程 environ 可见）、zram swap（116MB lzo-rle 在跑）、
+  cnip.mrs 迁移（`clash_modify.sh:303` 订阅钩子 + 全球直连目标内联 IP-CIDR=0）**三项早已生效**；
+  5G txpower 23→26dBm **实测否决**（SoC 59.8°C 逼近 60°C 热墙、5G 信号已 -42dBm/1050Mbps 近乎满格）
+- `docs/HARDWARE.md` §2/§5 复核状态：旧记录「无 swap/zram」「overlay 65%」已过时 —— 实测 overlay 仅 47%（余 29MB）、
+  zram 已启用；旧待办表补 2026-11-16 实测状态列，避免下一轮照旧快照重复改动
+- 本轮**未对设备写入任何配置**；所有结论来自现场只读实测，未触碰全屋网络的出口网关
+
 ### 刷机保留清单补齐顶层辅助脚本（2026-11-14）
 
 - `baseline/sysupgrade.conf` 补 7 项：`guardian.sh` `dest-guard.sh` `health-snapshot.sh` `bulk-guard.sh`

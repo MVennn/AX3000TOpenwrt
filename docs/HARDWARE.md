@@ -35,7 +35,7 @@
 | 流量卸载 | 软 / 硬 offload **均开**；flowtable 设备集 = `lan2,lan3,lan4,phy0-ap0,phy1-ap0,wan` | 第八轮全量复审（设备集与 `fw4 print` 对齐） | 2026-10-20 |
 | 拥塞控制 | `tcp_congestion_control = **cubic**`，**无 BBR** | 第一轮基线审计 | 2026-10-19 |
 | 调度器 | `cubic + fq_codel`（无需改） | 第八轮性能复审 | 2026-10-20 |
-| 交换 / 内存 | 无 swap、无 zram；`nf_conntrack_max = 15360`（实际 869–1353） | 第八轮性能复审 | 2026-10-20 |
+| 交换 / 内存 | zram swap **已启用**（`/dev/zram0` 116MB，lzo-rle；2026-11-16 实测已用 37MB）；`nf_conntrack_max = 15360`（实际 869–1353） | 第八轮性能复审 / 2026-11-16 上机复核 | 2026-10-20 / 2026-11-16 |
 | 关键 sysctl | `net.core.netdev_max_backlog` 1000 → **2048**（5G RX 队列曾溢出 9960 次）；`net.ipv4.tcp_slow_start_after_idle` 1 → **0** | 第十轮加固 | 2026-10-20 |
 
 **BBR 说明**：内核里**没有** BBR。第八轮把它列入「伪问题（已否）」——
@@ -111,9 +111,14 @@
 涨的主要来源是内存审计期间拉回本机的诊断产物与订阅原始文件。
 处置口径见 [MAINTENANCE.md](MAINTENANCE.md)。
 
-**未执行的待办**（截至 2026-10-20 15:00 仍是待办，别写成已完成）：
-9,631 条内联 IP-CIDR → `cnip.mrs`；`GOMEMLIMIT=64MiB`；腾出 16,832 KB 闪存；
-删 19 个无人引用的 `.mrs`。
+**待办状态复核（2026-11-16 18:15 上机实测，覆盖 10-20 旧记录）**：
+
+| 旧待办 | 2026-11-16 现状 |
+|---|---|
+| `GOMEMLIMIT=64MiB` | **已完成** —— `/etc/ShellCrash/configs/command.env` 已 export，运行核心进程 environ 中可见 |
+| zram（旧记录为「无」） | **已完成** —— `/dev/zram0` 116MB swap 在跑，`zram_comp_algo=lzo-rle` |
+| 9,631 条内联 IP-CIDR → `cnip.mrs` | **早已完成** —— `clash_modify.sh:303` 订阅钩子每次自动跑 `rules-cnip.sh`；config.yaml 中「全球直连」目标内联 IP-CIDR = 0 条，其余 653 条属其它策略组、脚本按设计不碰；`/etc/ShellCrash/ruleset/cnip.mrs`（37KB）存在且每日更新 |
+| 腾出 16,832 KB 闪存 / 删 19 个无引用 `.mrs` | 前提消失 —— overlay 实测仅 47%（26,440/58,832 KB，余 29MB），ruleset 目录只有 cn/cnip/porn 三个在用 `.mrs`，无 19 个无引用文件 |
 
 ---
 
@@ -122,6 +127,7 @@
 | 要查什么 | 去哪 |
 |---|---|
 | 当前配置值、访问入口、自检命令 | [OPERATIONS.md](OPERATIONS.md) |
+| 调优研究与高星项目对照（哪些已做 / 哪些待落地） | [TUNING-RESEARCH.md](TUNING-RESEARCH.md) |
 | 排障步骤 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
 | 保留策略与清理 | [MAINTENANCE.md](MAINTENANCE.md) |
 | 逐条变更台账 | 仓库根 [CHANGELOG.md](../CHANGELOG.md) |
