@@ -39,6 +39,21 @@ jobs:
       - name: Shell 语法
         run: find . -name '*.sh' -not -path './vault/*' -not -path './.work/*' -not -path './third-party/*' -print0 | xargs -0 -n1 sh -n
 
+      # 跨仓镜像一致性：ShellcrashRules 兄弟仓不在本仓 CI 检出范围内，
+      # check-mirror.sh 找不到它时返回 2 —— 这种情形按 skip 处理，不算失败；
+      # 真有漂移(1)或其它错误才让 CI 红。本地多仓并列检出时会真跑比对。
+      - name: 跨仓镜像一致性
+        run: |
+          set +e
+          sh tools/check-mirror.sh
+          rc=$?
+          set -e
+          case "$rc" in
+            0) echo "[OK] 镜像一致" ;;
+            2) echo "[SKIP] ShellcrashRules 兄弟仓未检出，跳过镜像门禁" ;;
+            *) echo "[FAIL] check-mirror.sh rc=$rc"; exit "$rc" ;;
+          esac
+
   docs:
     name: 文档自检
     runs-on: ubuntu-24.04

@@ -97,15 +97,26 @@ LASTFAIL=$(cat /etc/ShellCrash/logs/LAST_FAILURE 2>/dev/null | tr -d '\n')
 # --- 内存趋势：连续多少次低于 30MB（与 guardian 的 WARN 阈值同口径）---
 # 单次低是噪声（一次 hotupdate 解压就能压到 20MB），连续 3 次（=90 分钟）才算趋势。
 # 状态放 tmpfs，不写闪存。
+# M2 告警幂等（PITFALLS ⑳）：旧版 MEMLOW>=3 后每 30 分钟重复 logger 同一条，
+# 内存长期低位就每半小时刷一条 syslog。改为「边沿触发」——只有计数恰好跨过
+# 阈值那一刻（MEMLOW 从 2 变 3）告警一次，之后继续低位只累加 JSON 里的计数，
+# 不再重复 logger；MEMLOW 归零（内存恢复）时清标记，下次再跌破可重新告警。
+# .memlow.state 仍只存一个数字（JSON mem_low_runs 依赖），告警标记另存一个文件。
 MEMLOW_F=/tmp/router-health/.memlow.state
+MEMLOW_ALERTED_F=/tmp/router-health/.memlow.alerted
+mkdir -p /tmp/router-health 2>/dev/null
 MEMLOW=$(cat "$MEMLOW_F" 2>/dev/null)
 case "$MEMLOW" in ''|*[!0-9]*) MEMLOW=0 ;; esac
 case "$MEMAV" in ''|*[!0-9]*) MEMAV=0 ;; esac
 if [ "$MEMAV" -lt 30720 ]; then
   MEMLOW=$((MEMLOW + 1))
-  [ "$MEMLOW" -ge 3 ] && logger -t health "WARN mem_avail_kb=${MEMAV} 连续 ${MEMLOW} 次低于 30MB" 2>/dev/null
+  if [ "$MEMLOW" -ge 3 ] && [ ! -f "$MEMLOW_ALERTED_F" ]; then
+    : > "$MEMLOW_ALERTED_F" 2>/dev/null
+    logger -t health "WARN mem_avail_kb=${MEMAV} 连续 ${MEMLOW} 次低于 30MB" 2>/dev/null
+  fi
 else
   MEMLOW=0
+  rm -f "$MEMLOW_ALERTED_F" 2>/dev/null
 fi
 mkdir -p /tmp/router-health 2>/dev/null
 printf '%s\n' "$MEMLOW" > "$MEMLOW_F" 2>/dev/null

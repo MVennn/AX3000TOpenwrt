@@ -56,16 +56,24 @@ FIXES=0; ERRORS=0; WARNS=0; WOULDFIX=0
 log() {
   _msg="$*"
   # dry-run 下把 FIX: 改写成 WOULD-FIX: —— put() 已返回 204 让调用方走成功分支，
-  # 这里统一改写，日志里一眼能看出「本来会动哪一组」。
+  # 这里统一改写，预演输出里一眼能看出「本来会动哪一组」。
   if [ "$MODE" = "dry" ]; then
     case "$_msg" in FIX:*) _msg="WOULD-FIX:${_msg#FIX:}" ;; esac
   fi
+  # 计数显式互斥（L2）：WOULD-FIX 含 FIX 子串，旧版两个模式虽靠 case 顺序隐含
+  # 互斥，顺序一被调整就会 fixes/wouldfix 双计；这里用 else 分支硬隔离。
   case "$_msg" in
     *WOULD-FIX*) WOULDFIX=$((WOULDFIX + 1)) ;;
-    *FIX*)       FIXES=$((FIXES + 1)) ;;
+    *) case "$_msg" in *FIX*) FIXES=$((FIXES + 1)) ;; esac ;;
   esac
   case "$_msg" in *ERROR*) ERRORS=$((ERRORS + 1)) ;; esac
   case "$_msg" in *WARN*|*ALERT*) WARNS=$((WARNS + 1)) ;; esac
+  # H1：dry-run 零副作用 —— 预演消息只回显到 stdout，不写 guardian.log、不 logger
+  # 写 syslog；生产轮保持原样（落盘 + 高优先级日志）。
+  if [ "$MODE" = "dry" ]; then
+    printf 'WOULD[%s] %s\n' "$(ts)" "$_msg"
+    return 0
+  fi
   echo "$(ts) $_msg" >> "$LOG"
   case "$_msg" in
     *FIX*|*ALERT*|*ERROR*|*WARN*) logger -t guardian -p daemon.warn "$_msg" 2>/dev/null ;;
@@ -141,6 +149,18 @@ esac
 # 改策略组，与 usage 承诺相反。
 [ "$MODE" = "run" ] && [ "${GUARDIAN_DRY_RUN:-0}" = "1" ] && MODE=dry
 
+# ---- H1/M1: dry-run 状态隔离（预演绝不覆盖生产状态文件）------------------------
+# --status 与 health-snapshot.sh --json 把 guardian.state / .clean_verdict /
+# .clean_node 当「现状」读；dry 轮若写这些文件，预演假设就被当成真实现状。
+# 这里让 dry 轮只读写 .dry 副本（verdict/cache 干脆不写，见下方守卫），生产
+# 路径一个字节都不碰。STATE_FILE 统一收口收尾写入。
+STATE_FILE=/tmp/ShellCrash/guardian.state
+if [ "$MODE" = "dry" ]; then
+  CLEAN_VERDICT_FILE=/tmp/ShellCrash/.clean_verdict.dry
+  CLEAN_CACHE=/tmp/ShellCrash/.clean_node.dry
+  STATE_FILE=/tmp/ShellCrash/guardian.dry.state
+fi
+
 # 缓存文件在参数解析之后才建：--help / 非法参数提前 exit，不该在 tmpfs 留空文件。
 : > "$GRP_CACHE_FILE" 2>/dev/null
 
@@ -200,8 +220,8 @@ resolve_clean_node() {
   _members=$($CURL -s -m 5 -H "$AUTH" "$CTRL/proxies/$(enc "$CL")" 2>/dev/null \
     | sed -n 's/.*"all":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | sed 's/^"//;s/"$//')
   if [ -n "$_cur" ] && in_clean_list "$_cur" && echo "$_members" | grep -Fxq "$_cur" && node_alive "$_cur"; then
-    echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
-    echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
+    [ "$MODE" != "dry" ] && echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+    [ "$MODE" != "dry" ] && echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
     echo "$_cur"
     return
   fi
@@ -218,15 +238,15 @@ resolve_clean_node() {
   for _cand in $CLEAN_CANDIDATES; do
     if echo "$_members" | grep -Fxq "$_cand" && node_alive "$_cand"; then
       IFS="$_oldifs"
-      echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
-      echo "$(date +%s) $_cand" > "$CLEAN_CACHE" 2>/dev/null
+      [ "$MODE" != "dry" ] && echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+      [ "$MODE" != "dry" ] && echo "$(date +%s) $_cand" > "$CLEAN_CACHE" 2>/dev/null
       echo "$_cand"
       return
     fi
   done
   IFS="$_oldifs"
-  echo 0 > "$CLEAN_VERDICT_FILE" 2>/dev/null
-  echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
+  [ "$MODE" != "dry" ] && echo 0 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+  [ "$MODE" != "dry" ] && echo "$(date +%s) $_cur" > "$CLEAN_CACHE" 2>/dev/null
   echo "$_cur"
 }
 
@@ -299,14 +319,14 @@ fi
 # 两位数以上耗时不会命中 "3.*|4.*|…" 那套模式，判据会被静默跳过。
 ge_sec() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 >= b+0)}'; }
 
-if [ -f "$LOG" ]; then
+if [ "$MODE" != "dry" ] && [ -f "$LOG" ]; then
   SZ=$(wc -c < "$LOG" 2>/dev/null || echo 0)
   [ "$SZ" -gt 204800 ] && { tail -60 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"; }
 fi
 
 # ---------- 1) mihomo 存活（OOM 会被内核杀掉；服务关闭会清 pid 文件，故用"最近活着"状态文件兜底） ----------
 if $CURL -s -m 5 -H "$AUTH" "$CTRL/version" >/dev/null 2>&1; then
-  date +%s > "$ALIVEF" 2>/dev/null
+  [ "$MODE" != "dry" ] && date +%s > "$ALIVEF" 2>/dev/null
 else
   if pidof CrashCore >/dev/null 2>&1; then
     log "WARN: CrashCore 进程在但 API 无响应（可能正在热重载），本次不动作"
@@ -326,19 +346,23 @@ else
         # memgate.sh missing -> fail open (pre-U15 behaviour), warn once per boot
         if [ ! -f /tmp/ShellCrash/.memgate_missing_warned_guardian ]; then
           log "WARN: /etc/ShellCrash/memgate.sh 不存在，本轮无内存闸门保护地拉起 CrashCore"
-          touch /tmp/ShellCrash/.memgate_missing_warned_guardian 2>/dev/null
+          [ "$MODE" != "dry" ] && touch /tmp/ShellCrash/.memgate_missing_warned_guardian 2>/dev/null
         fi
       fi
       if [ "$_memgate_rc" -eq 1 ]; then
         log "WARN: 可用内存不足，memgate 拦截本轮拉起（详见 /etc/ShellCrash/logs/memgate.log）；内存恢复后由下一轮 cron 重试"
       else
-        log "ALERT: CrashCore 进程不存在（可能是 OOM 被杀），用 start.sh 拉起"
-        /bin/ash /etc/ShellCrash/start.sh start >> "$LOG" 2>&1
-        sleep 12
-        if $CURL -s -m 5 -H "$AUTH" "$CTRL/version" >/dev/null 2>&1; then
-          log "FIX: CrashCore 已恢复"
+        if [ "$MODE" = "dry" ]; then
+          log "FIX: CrashCore 进程不存在，本应执行 /etc/ShellCrash/start.sh start 拉起（dry-run 跳过：不重启、不 sleep 12s）"
         else
-          log "ERROR: CrashCore 拉起后仍无响应，需人工介入"
+          log "ALERT: CrashCore 进程不存在（可能是 OOM 被杀），用 start.sh 拉起"
+          /bin/ash /etc/ShellCrash/start.sh start >> "$LOG" 2>&1
+          sleep 12
+          if $CURL -s -m 5 -H "$AUTH" "$CTRL/version" >/dev/null 2>&1; then
+            log "FIX: CrashCore 已恢复"
+          else
+            log "ERROR: CrashCore 拉起后仍无响应，需人工介入"
+          fi
         fi
       fi
     else
@@ -500,7 +524,7 @@ if [ -n "$CUR_CL" ] && clean_exit_bad; then
     [ "$cand" = "$CUR_CL" ] && continue
     node_alive "$cand" || continue
     [ "$(put "$CL" "$cand")" = "204" ] || continue
-    sleep 3
+    [ "$MODE" != "dry" ] && sleep 3
     if ! clean_exit_bad; then
       FIXED="$cand"; break
     fi
@@ -508,8 +532,8 @@ if [ -n "$CUR_CL" ] && clean_exit_bad; then
   IFS="$OLDIFS"
   if [ -n "$FIXED" ]; then
     put "$AI_WEB" "$FIXED" >/dev/null 2>&1
-    echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
-    echo "$(date +%s) $FIXED" > "$CLEAN_CACHE" 2>/dev/null
+    [ "$MODE" != "dry" ] && echo 1 > "$CLEAN_VERDICT_FILE" 2>/dev/null
+    [ "$MODE" != "dry" ] && echo "$(date +%s) $FIXED" > "$CLEAN_CACHE" 2>/dev/null
     log "FIX: 干净出口劣化（当前入口「$CUR_CL」），已换到「$FIXED」（同一出口 IP，不影响会话）；AI网页组同步"
   else
     [ "$CUR_CL" != "$(grp "$CL")" ] && put "$CL" "$CUR_CL" >/dev/null 2>&1
@@ -536,9 +560,13 @@ if ! grep -qF "name: $AI_WEB" /tmp/ShellCrash/config.yaml 2>/dev/null; then
   NOWT=$(date +%s)
   PREV=$(cat $LASTF 2>/dev/null || echo 0)
   if [ $((NOWT - PREV)) -gt 1800 ]; then
-    echo $NOWT > $LASTF
-    log "FIX: 运行配置缺 $AI_WEB 组（疑为回退基础配置），重跑 hotupdate 重新生成"
-    /bin/ash /etc/ShellCrash/task/task.sh hotupdate >> "$LOG" 2>&1
+    if [ "$MODE" = "dry" ]; then
+      log "FIX: 运行配置缺 $AI_WEB 组，本应重跑 task.sh hotupdate 重新生成（dry-run 跳过：不写 LASTF、不 hotupdate）"
+    else
+      echo $NOWT > $LASTF
+      log "FIX: 运行配置缺 $AI_WEB 组（疑为回退基础配置），重跑 hotupdate 重新生成"
+      /bin/ash /etc/ShellCrash/task/task.sh hotupdate >> "$LOG" 2>&1
+    fi
   else
     log "WARN: 运行配置缺 $AI_WEB 组（疑为回退基础配置），30 分钟限频内不重复重生成"
   fi
@@ -553,7 +581,7 @@ CCF=/tmp/ShellCrash/.cc_probe_ts
 NOWT2=$(date +%s)
 LASTF2=$(cat "$CCF" 2>/dev/null || echo 0)
 if [ $((NOWT2 - LASTF2)) -ge 3600 ]; then
-  echo $NOWT2 > "$CCF"
+  [ "$MODE" != "dry" ] && echo $NOWT2 > "$CCF"
   CC=$($CURL -s -m 20 -x "$PROXY" "https://support.google.com/gemini/answer/13575153" 2>/dev/null | grep -oE "var cc=.[A-Z]{2}" | head -1 | sed "s/var cc=.//")
   if [ -n "$CC" ]; then
     case "$CC" in
@@ -586,7 +614,7 @@ if [ -n "$TMPK" ] && [ -n "$TMPT" ] && [ "$TMPT" -gt 0 ]; then
     # 清理逻辑优先委托 tmp-watch.sh（单点实现）：它有白名单 / 保护名单 /
     # 被打开 fd 检查 / 每轮 64 文件 8MB 配额，比这里的固定列表更懂哪些能删。
     # 委托后仍超线，才退回固定列表兜底（大文件不在白名单里时它不会碰）。
-    if [ -x /etc/router-health/tmp-watch.sh ]; then
+    if [ "$MODE" != "dry" ] && [ -x /etc/router-health/tmp-watch.sh ]; then
       TMPWATCH_PURGE=1 /bin/ash /etc/router-health/tmp-watch.sh >/dev/null 2>&1 \
         && log "FIX: 已委托 tmp-watch.sh 清理 /tmp（触发水位 ${TMPP}%）"
     fi
@@ -597,7 +625,7 @@ if [ -n "$TMPK" ] && [ -n "$TMPT" ] && [ "$TMPT" -gt 0 ]; then
                /tmp/sc-meta.tar.gz /tmp/mihomo-new /tmp/mihomo-arm64.gz /tmp/core_test_out.txt \
                /tmp/_core_test.sh /tmp/gpage.html /tmp/g2.html /tmp/g4.html /tmp/g5.html /tmp/pt.html \
                /tmp/sub.raw /tmp/sub.txt /tmp/sub2.txt; do
-        [ -e "$f" ] && { rm -rf "$f" 2>/dev/null; log "FIX: 已清理 /tmp 临时大文件 $f"; }
+        [ -e "$f" ] && { [ "$MODE" != "dry" ] && rm -rf "$f" 2>/dev/null; log "FIX: 已清理 /tmp 临时大文件 $f"; }
       done
       TMPK2=$(df -k /tmp 2>/dev/null | tail -1 | awk '{print $3}')
     fi
@@ -611,6 +639,9 @@ fi
 # 本脚本追加交错时会出现重复行 —— 每分钟跑两份 legacy 看门狗 = 双 CrashCore =
 # OOM 与断网（AGENTS 硬红线）。这里写临时文件去重后 mv 覆盖，再 crontab 重载。
 cron_ensure() {
+  # H1: dry-run 零副作用 —— 不写 /etc/crontabs/root、不重载 crontab。
+  # 返回 0 让调用方照常记一条 WOULD-FIX（log() 负责 FIX→WOULD-FIX 改写）。
+  [ "$MODE" = "dry" ] && return 0
   _pat="$1"; _line="$2"; _f=/etc/crontabs/root
   grep -qF "$_pat" "$_f" 2>/dev/null && return 0
   _tmp=/tmp/ShellCrash/crontab.$$
@@ -656,5 +687,5 @@ fi
   printf 'pool=%s\n' "$(eff_node "$POOL_GROUP")"
   printf 'ai_exit=%s\n' "$(grp "$AI_WEB")"
   printf 'clean_node=%s\n' "$(grp "$CL")"
-} > /tmp/ShellCrash/guardian.state 2>/dev/null
+} > "$STATE_FILE" 2>/dev/null
 exit 0
