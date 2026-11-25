@@ -101,6 +101,11 @@ for t in quicguard googlecn googleroute; do
         continue
     fi
     if [ -f "/etc/$t.nft" ]; then
+        # nft -f 是「add table」语义：表已存在会整文件报 File exists、什么都不改
+        # （system/quicguard-sync.sh 有同名注释），所以先删后载；不存在时跳过。
+        if nft list table inet "$t" >/dev/null 2>&1; then
+            nft delete table inet "$t" >/dev/null 2>&1
+        fi
         nft -f "/etc/$t.nft" >/dev/null 2>&1 && log "已加载 inet $t" || log "!! inet $t 加载失败"
     else
         log "!! /etc/$t.nft 不存在"

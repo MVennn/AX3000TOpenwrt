@@ -340,8 +340,14 @@ else
       # itself to syslog and to .../logs/memgate.log, size capped).
       _memgate_rc=0
       if [ -f /etc/ShellCrash/memgate.sh ]; then
-        /etc/ShellCrash/memgate.sh check
-        _memgate_rc=$?
+        # dry-run 不能真跑 check：它会往闪存 memgate.log 追加、并累加
+        # /tmp/ShellCrash/.memgate_block_count，把生产计数器推向 FORCE_AFTER。
+        if [ "$MODE" = "dry" ]; then
+          log "FIX: 内存闸门本应执行 /etc/ShellCrash/memgate.sh check（dry-run 跳过：不写 memgate.log、不动拦截计数）"
+        else
+          /etc/ShellCrash/memgate.sh check
+          _memgate_rc=$?
+        fi
       else
         # memgate.sh missing -> fail open (pre-U15 behaviour), warn once per boot
         if [ ! -f /tmp/ShellCrash/.memgate_missing_warned_guardian ]; then
@@ -638,17 +644,56 @@ fi
 # 追加 cron 行并去重：grep -q 之后直接 >> 不是原子操作，start.sh 重写 crontab 与
 # 本脚本追加交错时会出现重复行 —— 每分钟跑两份 legacy 看门狗 = 双 CrashCore =
 # OOM 与断网（AGENTS 硬红线）。这里写临时文件去重后 mv 覆盖，再 crontab 重载。
+#
+# 2026-11-25 加固（审查 P1-A），四条一起改，缺一条都不安全：
+#   1) 临时文件放 /etc/crontabs 同盘：跨 tmpfs(/tmp) → overlay(/etc) 的 mv 是
+#      copy+unlink，断电/写满会留下截断的 crontab（2026-11-04 整表清空事故）。
+#   2) 旧内容先读进变量并检查 cat 的退出码。写成 { cat; printf; } | awk 时管道
+#      状态取的是 awk 的，cat 失败会被掩码，结果「只剩新加那一行」被当成完整表装回去。
+#   3) 合并结果要校验：非空、行数不少于旧表的去重行数；不满足就放弃覆盖并记 ERROR。
+#   4) 覆盖后归一 600 root:root，并检查 crontab 重载的返回码（原实现都没做）。
 cron_ensure() {
   # H1: dry-run 零副作用 —— 不写 /etc/crontabs/root、不重载 crontab。
   # 返回 0 让调用方照常记一条 WOULD-FIX（log() 负责 FIX→WOULD-FIX 改写）。
   [ "$MODE" = "dry" ] && return 0
   _pat="$1"; _line="$2"; _f=/etc/crontabs/root
   grep -qF "$_pat" "$_f" 2>/dev/null && return 0
-  _tmp=/tmp/ShellCrash/crontab.$$
-  { cat "$_f" 2>/dev/null; printf '%s\n' "$_line"; } | awk '!seen[$0]++' > "$_tmp" 2>/dev/null \
-    || { rm -f "$_tmp"; return 1; }
-  mv -f "$_tmp" "$_f" 2>/dev/null || { rm -f "$_tmp"; return 1; }
-  crontab "$_f" 2>/dev/null
+  # 同盘临时文件：mv 才是 rename（原子）。点开头不会被当作用户名加载。
+  _tmp=/etc/crontabs/.root.new.$$
+  _oldtxt=""
+  if [ -f "$_f" ]; then
+    _oldtxt=$(cat "$_f" 2>/dev/null) || { log "ERROR: 读 $_f 失败，放弃补 cron 行（$_pat）"; return 1; }
+  fi
+  # 旧表的去重行数：合并后至少要保住这么多行（旧表里的重复行允许被合并掉）
+  _need=0
+  if [ -n "$_oldtxt" ]; then
+    _need=$(printf '%s\n' "$_oldtxt" | awk '!seen[$0]++' | wc -l)
+    case "$_need" in ''|*[!0-9]*) _need=0 ;; esac
+  fi
+  {
+    [ -n "$_oldtxt" ] && printf '%s\n' "$_oldtxt"
+    printf '%s\n' "$_line"
+  } | awk '!seen[$0]++' > "$_tmp" 2>/dev/null
+  _arc=$?
+  if [ "$_arc" -ne 0 ]; then
+    rm -f "$_tmp"
+    log "ERROR: 合并 crontab 失败（awk rc=$_arc），未覆盖 $_f"
+    return 1
+  fi
+  _new=$(wc -l < "$_tmp" 2>/dev/null)
+  case "$_new" in ''|*[!0-9]*) _new=0 ;; esac
+  if [ ! -s "$_tmp" ] || [ "$_new" -lt 1 ] || [ "$_new" -lt "$_need" ]; then
+    rm -f "$_tmp"
+    log "ERROR: crontab 合并结果异常（新 $_new 行 / 旧需 $_need 行），放弃覆盖并保留原表"
+    return 1
+  fi
+  # 覆盖前留一份旧表到 tmpfs：/etc/crontabs 下的多余文件会被 crond 当未知用户清掉
+  cp -f "$_f" /tmp/ShellCrash/crontab.bak 2>/dev/null
+  mv -f "$_tmp" "$_f" 2>/dev/null || { rm -f "$_tmp"; log "ERROR: 替换 $_f 失败"; return 1; }
+  chmod 600 "$_f" 2>/dev/null
+  chown root:root "$_f" 2>/dev/null
+  crontab "$_f" 2>/dev/null \
+    || { log "ERROR: crontab 重载失败（内容已写入 $_f，下轮重试；旧表副本 /tmp/ShellCrash/crontab.bak）"; return 1; }
   return 0
 }
 if ! grep -qF 'start_legacy_wd.sh' /etc/crontabs/root 2>/dev/null; then
@@ -667,6 +712,17 @@ if [ -f /etc/ShellCrash/traffic-stats.sh ] && ! grep -qF 'traffic-stats.sh' /etc
         log "FIX: restored traffic-stats cron line"
     else
         log "ERROR: 补回 traffic-stats cron 行失败（/etc/crontabs/root 不可写？）"
+    fi
+fi
+
+# 守护自己那一行：crontab 一旦被清空/截断，guardian 再也不会被 cron 拉起，
+# 也就没有任何东西能把它补回来（2026-11-04 事故的终局形态：整表只剩一行）。
+# 这里同样自愈，让「cron 全丢」至少能靠自身下一次运行救回来。
+if ! grep -qF '/etc/ShellCrash/guardian.sh' /etc/crontabs/root 2>/dev/null; then
+    if cron_ensure '/etc/ShellCrash/guardian.sh' '*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护'; then
+        log "FIX: restored guardian cron line"
+    else
+        log "ERROR: 补回 guardian 自身 cron 行失败（/etc/crontabs/root 不可写？）"
     fi
 fi
 

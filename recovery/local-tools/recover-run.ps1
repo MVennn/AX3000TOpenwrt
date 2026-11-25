@@ -46,11 +46,16 @@ $content = [IO.File]::ReadAllText($localScript, [Text.Encoding]::UTF8) -replace 
 Write-Host 'You will be asked for the root password (input is hidden).' -ForegroundColor Yellow
 Write-Host ''
 
+# 主机指纹：默认 accept-new（首次记录、之后不一致就硬失败）。原写法
+# StrictHostKeyChecking=no + UserKnownHostsFile=NUL 等于在未知网络上把 root 口令
+# 交给任何抢答该地址的机器；PubkeyAuthentication=no 也去掉（有密钥就先用密钥）。
+# 一次性绕过用 $env:SSH_STRICT='no'，事后清理 known_hosts 里对应条目。
+$strict = 'accept-new'
+if ($env:SSH_STRICT) { $strict = $env:SSH_STRICT }
+
 $sshArgs = @(
-    '-o', 'StrictHostKeyChecking=no',
-    '-o', 'UserKnownHostsFile=NUL',
+    '-o', "StrictHostKeyChecking=$strict",
     '-o', 'LogLevel=ERROR',
-    '-o', 'PubkeyAuthentication=no',
     '-o', 'PreferredAuthentications=password',
     '-o', 'RequestTTY=no',
     "root@$router",

@@ -27,7 +27,12 @@ if ! ping -n 1 -w 1000 "$ROUTER_IP" >/dev/null 2>&1; then
 fi
 
 echo "=== [2/4] 推送并执行恢复脚本 ==="
-"$SSH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=12 \
+# 主机指纹：默认 accept-new（首次连接记录指纹，之后不一致就硬失败）。
+# 原来是 StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null：救砖时连的是
+# 未知 AP，10.0.0.1 只是默认网关名，那样等于把 root 口令交给任何抢答该地址的机器
+# （审查 P1-C）。确需一次性绕过用 SSH_STRICT=no 覆盖，事后从 known_hosts 删掉条目。
+SSH_STRICT="${SSH_STRICT:-accept-new}"
+"$SSH" -o StrictHostKeyChecking="$SSH_STRICT" -o ConnectTimeout=12 \
        -o ServerAliveInterval=10 root@"$ROUTER_IP" "sh -s" < "$SCRIPT"
 RC=$?
 echo "=== ssh 退出码: $RC ==="
