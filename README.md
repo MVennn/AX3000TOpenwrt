@@ -62,7 +62,7 @@ Make the Router Boring Again.
    ssh "$R" 'echo "*/10 * * * * /bin/ash /etc/ShellCrash/dest-guard.sh #站点健康守卫(dry-run)" >> /etc/crontabs/root && /etc/init.d/cron restart'
    ```
 
-5. 装巡检脚本 —— `system/router-health/` 三个脚本：`tmp-watch.sh` 每 5 分钟看 RAM 型 `/tmp` 水位并在白名单内回收陈旧文件，`health-snapshot.sh` 每 30 分钟写一份带 24 字段的健康快照（含刷机保留清单漏项审计，只在漏项集合变化时告警），`backup-prune.sh` 每天 04:40 修剪备份区；目标路径与 cron 行见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+5. 装巡检脚本 —— `system/router-health/` 三个脚本：`tmp-watch.sh` 每 5 分钟看 RAM 型 `/tmp` 水位并在白名单内回收陈旧文件，`health-snapshot.sh` 每 30 分钟写一份带 29 字段的健康快照（含刷机保留清单漏项审计，只在漏项集合变化时告警），`backup-prune.sh` 每天 04:40 修剪备份区；目标路径与 cron 行见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 6. 维护或升级前先停守护，否则守护会把代理复活、妨碍升级（命令见 [docs/DEPLOY.md](docs/DEPLOY.md)）。
 
