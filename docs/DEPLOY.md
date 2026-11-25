@@ -47,6 +47,8 @@
 | `guardian/guardian.sh` | `/etc/ShellCrash/guardian.sh` | cron `*/5 * * * *`（`/bin/ash` 调用） | 回退源 = git 历史（`/root/backup` 同名副本已按「改完即删」清掉，2026-11-01）；**停用**：见[「启用与停用守护」](#启用与停用守护) |
 | `guardian/memgate.sh` | `/etc/ShellCrash/memgate.sh` | `guardian.sh`（OOM 拉起前）与 `starts/start_legacy_wd.sh`（每分钟看门狗）调用 | 回退源 = git 历史（同名副本已清，2026-11-01）；缺失时两个调用方都 fail-open（照旧拉起，只告警一次） |
 | `guardian/memgate.conf` | `/etc/ShellCrash/configs/memgate.conf` | `memgate.sh` 读取阈值 | 删文件 → 用脚本内置默认 `MEM_GATE_KB=32768` / `MEMGATE_FORCE_AFTER=5` |
+| `guardian/heap-guard.sh` | `/etc/ShellCrash/heap-guard.sh` | `guardian.sh` 每轮末尾调用（`-x` 才跑）；连续 N 次 `MemAvailable` 低于阈值且 PID 未变时受控 restart CrashCore | 删文件 → guardian 的 hook 因 `-x` 判假自动跳过；**2026-11-25 自设备回写入库**，此前仅存在于设备 |
+| `guardian/heapguard.conf` | `/etc/ShellCrash/configs/heapguard.conf` | `heap-guard.sh` 读取阈值 | 删文件 → 用脚本内置默认；**2026-11-25 自设备回写入库** |
 | `guardian/dest-guard.sh` | `/etc/ShellCrash/dest-guard.sh` | cron `*/10 * * * *`（`/bin/ash` 调用）；**默认 dry-run**，只写 `/tmp/ShellCrash/dest-guard.log` | 删 cron 行 + 删文件；已切换过的组在面板里手动选回 |
 | `bulk-guard.sh`（**不在本仓**，来自 `OpenwrtOpsToolkit/openwrt/`） | `/etc/ShellCrash/bulk-guard.sh` | cron `*/3 * * * *`（`/bin/ash` 调用，脚本用法注释的推荐值）；组名从 `/etc/openwrt-ops/device.conf` 读 | 删 cron 行 + 删文件；已切过的组在面板里手动选回 |
 | `/etc/openwrt-ops/device.conf`（设备侧新建，不入库） | 同左 | `bulk-guard.sh` 读取 `BULK_GROUP` / `BULK_PUBLIC` / `BULK_AIRPORT` | 删文件 → 脚本报「未配置」并跳过（不改任何组） |

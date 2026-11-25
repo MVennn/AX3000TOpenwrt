@@ -744,4 +744,12 @@ fi
   printf 'ai_exit=%s\n' "$(grp "$AI_WEB")"
   printf 'clean_node=%s\n' "$(grp "$CL")"
 } > "$STATE_FILE" 2>/dev/null
+
+# ---- heap self-heal hook (2026-11-24) ----
+# 设备侧 2026-11-24 起已在跑，2026-11-25 回写仓库，避免下次部署覆盖丢失。
+# 用绝对路径引用，部署后位置与设备一致（/etc/ShellCrash/heap-guard.sh）。
+if [ -x /etc/ShellCrash/heap-guard.sh ]; then
+  /etc/ShellCrash/heap-guard.sh >> /etc/ShellCrash/logs/heapguard.log 2>&1
+fi
+
 exit 0
