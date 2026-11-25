@@ -93,14 +93,28 @@ if [ "$S" -ge "$STRIKES" ]; then
   fi
   hg_log "ALERT: 连续 ${S} 次内存吃紧,受控重启 CrashCore 释放累积 heap (pid=$PID, avail=${AVAIL}MB)"
   /bin/ash "$START" restart >> "$LOG" 2>&1
-  sleep 12
-  _newpid=$(pidof CrashCore 2>/dev/null | awk '{print $1}')
+  # 验活：轮询最多 90s，要求出现「新 PID 且稳定 5s」。
+  # 2026-11-25 修：原来固定 sleep 12 就判活，而 mihomo 加载 4000+ 规则要 20-40s，
+  # 19:00 那轮因此误报「未起来,需人工介入」（实际 14s 后正常起来）。
+  _w=0; _newpid=""
+  while [ "$_w" -lt 30 ]; do
+    sleep 3
+    _w=$((_w+1))
+    _cand=$(pidof CrashCore 2>/dev/null | awk '{print $1}')
+    [ -z "$_cand" ] && continue
+    [ "$_cand" = "$PID" ] && continue
+    sleep 5
+    _re=$(pidof CrashCore 2>/dev/null | awk '{print $1}')
+    if [ "$_re" = "$_cand" ]; then _newpid="$_cand"; break; fi
+  done
   if [ -n "$_newpid" ]; then
     _avail2=$(avail_mb)
-    hg_log "FIX: CrashCore 已重启 (old=$PID new=$_newpid), MemAvailable 回到 ${_avail2}MB"
+    hg_log "FIX: CrashCore 已重启 (old=$PID new=$_newpid, 等待约 $((_w*3))s), MemAvailable 回到 ${_avail2}MB"
     printf 'strikes=0\npid=%s\nts=%s\n' "$_newpid" "$(date +%s)" > "$STATE" 2>/dev/null
   else
-    hg_log "ERROR: CrashCore 重启后未起来,需人工介入"
+    # 保持 strikes 但刷新 ts，进入 HG_COOLDOWN 冷却，避免 5 分钟后再次触发形成重启风暴
+    hg_log "ERROR: CrashCore 重启后 90s 内未见稳定新进程,需人工介入（已进入冷却）"
+    printf 'strikes=%s\npid=%s\nts=%s\n' "$S" "$PID" "$(date +%s)" > "$STATE" 2>/dev/null
   fi
 fi
 exit 0
