@@ -1,4 +1,6 @@
 # 凭据与安全须知
+> 占位符语义（`<REDACTED-…>` / `<REPLACE-…>` / `<YOUR-…>`）与豁免统一见跨仓文档 `F:/Project/docs/PLACEHOLDERS.md`（在本仓库外，故意不写成仓内相对链接）。
+
 
 > **一句话**：这套脚本需要哪些凭据、分别从哪里读、换设备时怎么轮换 ——
 > 本篇**只写位置与读取方式，不写任何值**。
@@ -38,7 +40,7 @@
 
 三者都没有 → **报错退出（exit 1）**，绝不吐出一个空的或错的口令。
 
-```sh
+```bash
 export ROUTER_PASSWORD='...'          # 临时用
 # 或
 printf '%s\n' '...' > recovery/local-tools/.router-password
@@ -52,7 +54,7 @@ printf '%s\n' '...' > recovery/local-tools/.router-password
 PC 侧跨仓诊断脚本从环境变量 `MIHOMO_SECRET` 读；未设置就明确报错，不会拿着空 secret
 去请求、再收到一个含义不明的 401。
 
-```sh
+```bash
 export MIHOMO_SECRET="$(ssh root@"$ROUTER_IP" \
   'grep -m1 "^secret=" /etc/ShellCrash/configs/ShellCrash.cfg | cut -d= -f2- | tr -d "\x27\x22"')"
 ```
@@ -66,7 +68,7 @@ export MIHOMO_SECRET="$(ssh root@"$ROUTER_IP" \
 
 ## 3. 换设备 / 公开 Fork 前的检查清单
 
-```sh
+```bash
 # 1) 确认没有把凭据文件带进去
 git ls-files | grep -Ei '\.(key|crt|pem|p12|pfx)$|askpass\.sh|subscription|proxies\.yaml$'
 
@@ -108,7 +110,7 @@ python tools/check-secrets.py
 
 ---
 
-# 推送前脱敏规则（通用）
+## 推送前脱敏规则（通用）
 
 > **一句话**：推送前跑一次 `python tools/check-secrets.py`；它拦的是三类东西 ——
 > 可用凭据、本机用户目录、真实邮箱。规则对 8 个仓完全一致，一处改全局同步。
@@ -185,7 +187,7 @@ python tools/check-secrets.py
 
 ## 5. 推送前怎么做
 
-```sh
+```bash
 # 1) 扫已跟踪文件（CI 跑的就是这个，退出码 0 才能推）
 python tools/check-secrets.py
 

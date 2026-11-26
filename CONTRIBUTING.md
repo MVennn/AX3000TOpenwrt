@@ -12,7 +12,7 @@
 - **守护失灵 / 恢复报错 / 开机不生效** → 用「问题反馈（Bug）」模板。
   请务必带上**设备与固件版本、脚本路径与调用方式、相关日志**：
 
-  ```sh
+  ```bash
   tail -50 /tmp/ShellCrash/guardian.log
   tail -50 /root/recover-last.log
   logread | tail -50
@@ -31,7 +31,7 @@
    不要把真实值写进脚本、示例或文档。规则见 [docs/SECRETS.md](docs/SECRETS.md)。
 3. 提交前至少跑过：
 
-   ```sh
+   ```bash
    python3 tools/check-docs.py
    python3 tools/check-secrets.py
    python3 tools/check-vault-not-staged.py --all
@@ -52,6 +52,10 @@
 | 版本号只在发版时进位，规则按对象拆行 | [docs/VERSIONING.md](docs/VERSIONING.md) |
 | 用户可感知的改动要进 [CHANGELOG.md](CHANGELOG.md) | [docs/MAINTENANCE.md](docs/MAINTENANCE.md) |
 | 不要改 `third-party/` 里的上游内容 | [docs/UPSTREAM.md](docs/UPSTREAM.md) |
+
+## 提交信息与 Git 约定
+
+Conventional Commits（`type(scope): subject`，按对象拆行）；tag 用 `vMAJOR.MINOR.PATCH`，只在发版时创建；分支与 release 步骤见跨仓 [GIT-WORKFLOW.md](../docs/GIT-WORKFLOW.md)。
 
 ## 免责声明
 

@@ -10,7 +10,7 @@
 **本仓库不保存任何凭据。** 文档里出现的是 `<REDACTED-...>` / `<YOUR-...>` 占位符；
 脚本从环境变量或设备侧真源读取。位置、读取方式与轮换顺序见 [SECRETS.md](SECRETS.md)。
 
-```sh
+```bash
 # 用密钥登录（推荐）
 ssh -i ~/.ssh/owrt_ax3000t root@"$ROUTER_IP"
 ```
@@ -33,7 +33,7 @@ ssh -i ~/.ssh/owrt_ax3000t root@"$ROUTER_IP"
 
 ## 三、关键配置示例
 
-```
+```bash
 固件            OpenWrt 25.12.x / 内核 6.12.x（以你的设备为准）
 LAN             <REPLACE-ROUTER-LAN-IP>/24   br-lan = lan2+lan3+lan4
 WAN             192.168.1.2/24（DHCP）  MTU 1480   ← 双层 NAT 时的示例
@@ -57,7 +57,7 @@ DNS             LAN 客户端 53 端口被 nft 劫持到 mihomo :1053（fake-ip�
 
 策略组名与节点名来自参考订阅，**换订阅后要改成你自己的名字**：
 
-```
+```text
 🚀 节点选择  = ♻️ 自动选择
 🤖 AI接口    = 按真实 API 延迟 url-test
 🤖 AI网页    = select，固定到经实测可用的出口
@@ -89,7 +89,7 @@ DNS             LAN 客户端 53 端口被 nft 劫持到 mihomo :1053（fake-ip�
 
 ## 四、自检命令
 
-```sh
+```bash
 # 1) 路由器侧健康快照（每次一行，落 /etc/router-health/）
 sh /etc/router-health/health-snapshot.sh
 #    机器可读版（写 /tmp/router-health/health.json，tmpfs，不占闪存写入预算）
@@ -132,7 +132,7 @@ cat /tmp/.keepaudit.state                         # 稳定漏项集合，每 30 
 
 ### 一键重启 + 自动验收（醒来后想验证重启时用这个）
 
-```sh
+```bash
 # 备份 -> 注册开机后自检 -> 重启（约 1-2 分钟恢复）
 sh /etc/router-health/reboot-verify.sh start
 
@@ -175,7 +175,7 @@ sh /etc/router-health/reboot-verify.sh status
 
 想先看当前各项挂在哪个组、冷却还剩多久（不探测、不取锁、不写日志）：
 
-```sh
+```bash
 sh /etc/ShellCrash/dest-guard.sh --status
 ```
 
@@ -188,7 +188,7 @@ sh /etc/ShellCrash/dest-guard.sh --status
 ShellcrashRules 里的同名文件必须字节一致；`system/quicguard.nft` 是生成物，只能由模板展开生成。
 改完任一侧都跑一遍：
 
-```sh
+```bash
 sh tools/check-mirror.sh
 ```
 

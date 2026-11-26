@@ -67,7 +67,7 @@
 
 上传完先验字节、再验行为，两条都过才算部署成功：
 
-```sh
+```bash
 # 1) 字节：staging 目录里带 MANIFEST.md5，逐项比对，任何一项 FAILED 都不要往下走
 md5sum -c MANIFEST.md5
 
@@ -90,19 +90,19 @@ md5sum -c MANIFEST.md5
 守护由 crontab 里的这一行拉起（用 `/bin/ash` 显式调用，不依赖执行位；脚本**首行即
 `#!/bin/sh`** —— `scp` 落地可能丢 `+x`，直接 `./guardian.sh` 不保证能跑）：
 
-```sh
+```bash
 */5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护
 ```
 
 **维护 / 升级前先停守护** —— 否则守护会把代理复活、妨碍升级：
 
-```sh
+```bash
 sed -i '/guardian/d' /etc/crontabs/root && /etc/init.d/cron restart
 ```
 
 维护结束后再把上面那行加回去：
 
-```sh
+```bash
 echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/crontabs/root && /etc/init.d/cron restart
 ```
 
@@ -112,7 +112,7 @@ echo "*/5 * * * * /bin/ash /etc/ShellCrash/guardian.sh #网络守护" >> /etc/cr
 **大流量守卫（`bulk-guard.sh`）要一起停**：它会在空闲时切策略组，维护期间
 （改配置 / 重启 ShellCrash）切组没有意义，还可能把面板里的选择改掉：
 
-```sh
+```bash
 sed -i '/bulk-guard/d' /etc/crontabs/root && /etc/init.d/cron restart
 ```
 
@@ -120,7 +120,7 @@ sed -i '/bulk-guard/d' /etc/crontabs/root && /etc/init.d/cron restart
 一起常驻。先看 `/tmp/ShellCrash/dest-guard.log` 跑一周，确认它的判断与体感一致，再把
 cron 行改成带 `DEST_GUARD_DRY_RUN=0` 的形式启用切换：
 
-```sh
+```bash
 */10 * * * * DEST_GUARD_DRY_RUN=0 /bin/ash /etc/ShellCrash/dest-guard.sh #站点健康守卫
 ```
 

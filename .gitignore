@@ -19,6 +19,7 @@
 wg-*.conf
 .env
 .env.*
+!.env.example
 # 本机 root 口令文件（askpass.sh 的本地回退来源）
 .router-password
 **/.router-password

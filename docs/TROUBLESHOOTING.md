@@ -15,7 +15,7 @@
 
 任何「连不上 / 打不开」的问题，先在路由器上跑这三条，输出一起贴回来：
 
-```sh
+```bash
 # 1) 核心在不在 + 端口开没开
 pidof CrashCore; netstat -lntp 2>/dev/null | grep -E ':(7890|7892|9999|1053)'
 
@@ -28,7 +28,7 @@ grep MemAvailable /proc/meminfo; df -h /tmp /overlay
 
 再跑一次健康快照，把输出一起贴回来：
 
-```sh
+```bash
 sh /etc/router-health/health-snapshot.sh          # 每次一行，落 /etc/router-health/
 ```
 
@@ -41,9 +41,9 @@ sh /etc/router-health/health-snapshot.sh          # 每次一行，落 /etc/rout
 手机 / 电脑连上了 SSID，IP 也拿到了（`10.0.0.x`），但**所有网页都打不开**。
 部分情况下「刚重启完一会儿全站打不开」，过一会儿自己好了。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 是不是 DNS 的问题（先分清：DNS 挂了 vs 全链路挂了）
 nslookup www.baidu.com 127.0.0.1
 
@@ -80,9 +80,9 @@ nft list tables
 所有域名都解析不出来，表现为「WiFi 连上了但没网」。
 路由器自己 `nslookup` 也失败。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) mihomo 的 DNS 端口（1053）在不在
 netstat -lntp 2>/dev/null | grep ':1053'
 
@@ -119,9 +119,9 @@ ls -ld /var /var/etc; ls /var/etc/dnsmasq.conf.* 2>/dev/null
 国内站点正常，**国外站点打不开**；面板 `:9999/ui` 打不开；
 `curl -x http://127.0.0.1:7890` 超时。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 核心进程与端口
 pidof CrashCore; netstat -lntp 2>/dev/null | grep -E ':(7890|7892|9999)'
 
@@ -166,9 +166,9 @@ sh /etc/ShellCrash/ai-api-check.sh
 `CrashCore` 莫名其妙消失，`dmesg` 里有 OOM 记录；
 或者整机突然重启，日志里只有开机序列、**没有** shutdown/reboot 记录。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 内核有没有 OOM 记录
 dmesg | grep -i -E 'oom|killed process'
 logread | grep -i -E 'oom|killed'
@@ -210,9 +210,9 @@ cat /proc/swaps; ls /dev/zram* 2>/dev/null
 
 路由器**突然重启**：无正常关机日志，`uptime` 归零，内核日志只有开机序列。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 上一次重启的原因：看是不是 OOM（OOM 有记录，看门狗复位没有）
 dmesg | grep -i -E 'oom|killed|watchdog|wdt'
 
@@ -248,9 +248,9 @@ ls /etc/init.d/ | grep -i -E 'watchdog|wdt'
 ShellCrash 生成配置失败，日志里出现 `ENOSPC` / `No space left on device`；
 或 `/tmp` 满了之后**代理与 DNS 一起断**。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) /tmp 水位（tmpfs 由 tmpfs-cap 封顶 48 MiB）
 df -h /tmp; df -k /tmp
 
@@ -288,9 +288,9 @@ head -3 /tmp/ShellCrash/error.yaml 2>/dev/null
 某一类流量没被接管：QUIC 没被拦、Google 国内边缘没进代理、
 DNS 劫持不生效、或 **7890 mixed 口从 LAN 又能连上了**。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 现在有几张表
 nft list tables
 
@@ -333,9 +333,9 @@ grep -n 'nft -f' /etc/rc.local
 定时任务没了：守护不跑、看门狗不跑、订阅不更新；
 或者 `start.sh stop` 之后代理被守护复活，妨碍维护。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 现在有哪些 cron
 cat /etc/crontabs/root
 
@@ -387,9 +387,9 @@ busybox 的 crond **不支持 `@reboot`** —— 需要开机执行的任务要�
 或者每 30 分钟一条上千字节的 `keepaudit WARN not-in-keep-list:`，真正有用的告警
 （hostapd / guardian / dropbear）被冲出 512 KiB 环形缓冲，回头查事故只剩 3–4 小时。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 量化噪音占比（行数 / 字节）
 logread | grep -c 'cron.err'
 logread | wc -c
@@ -421,9 +421,9 @@ logread | grep "$(date '+%b %e')" | grep -c 'cron.err'
 过几秒才在 `#` 提示符后冒出 `rules-porn:`、`rules-cnip:`、`[reorder-groups]`；
 误以为「升级没生效」或「规则被重置」。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 二进制与运行态分开验（两个都要是目标版本）
 /etc/ShellCrash/CrashCore.upx -v
 grep "^core_v=" /etc/ShellCrash/configs/ShellCrash.cfg
@@ -460,9 +460,9 @@ tail -5 /etc/ShellCrash/logs/sub-sync.log
 四个注册局的前缀。命中这些段的 UDP/443 会被 `return` 放行 —— 而 UDP 不经代理（ShellCrash 只劫持 TCP），
 于是这些目的地址「QUIC 直连成功、TCP 才走代理」，真实 IPv6 与未代理流量一起出网。
 
-### 排查步骤
+### 排障步骤
 
-```sh
+```bash
 # 1) 本仓里这几条在哪（行号即审查证据，跑在仓库目录）
 grep -nE '^[[:space:]]*2001:(6[0-9a-f]{2}|7[0-9a-f]{2}):' system/quicguard.nft   # 6 行：4540-4545
 grep -n  '^[[:space:]]*2804:1e48:' system/quicguard.nft                         # 2 行：5899-5900

@@ -30,7 +30,7 @@ python tools/check-vault-not-staged.py --all
 
 ## 1. 里面有什么
 
-```
+```text
 vault/backup/
 ├─ keys/
 │  ├─ uhttpd.key.orig            HTTPS 私钥（与设备上的 /etc/uhttpd.key 配对）
@@ -61,7 +61,7 @@ vault/backup/
 
 ## 3. 恢复步骤
 
-```sh
+```bash
 # 整机回滚
 tar -xzf vault/backup/sysupgrade/pre-25.12.6.tar.gz -C /tmp/restore
 # → 把 /tmp/restore/etc 合并回设备，或走 sysupgrade 流程刷回旧固件

@@ -1,4 +1,4 @@
-# recover-run.ps1 - upload recover-now.sh to the router and run it
+﻿# recover-run.ps1 - upload recover-now.sh to the router and run it
 # Usage: double-click recover-run.cmd, or run this file in PowerShell
 # Requires: Windows 10/11 built-in OpenSSH client (ssh.exe)
 

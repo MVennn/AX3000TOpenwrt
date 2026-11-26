@@ -64,7 +64,7 @@
 
 ## 4. 清理流程
 
-```sh
+```bash
 # ---- 在路由器上（/root/backup）----
 cd /root/backup
 
@@ -164,7 +164,7 @@ tmpwatch / systemd-tmpfiles，只有删文件或重启才会降。
 
 **手工跑一次**（不影响 cron）：
 
-```sh
+```bash
 sh /etc/router-health/tmp-watch.sh                    # 有候选才删，无候选静默
 TMPWATCH_PURGE=0 sh /etc/router-health/tmp-watch.sh   # 只观察，不删
 tail -5 /etc/router-health/tmp-usage.log              # 告警与回收台账（上限 64 KB）
